@@ -1,4 +1,4 @@
-export interface DeepSeekRagSettings {
+export interface ObsidianAIAssistantSettings {
   apiKey: string;
   model: string;
   apiBaseUrl: string;
@@ -101,10 +101,10 @@ export interface PersistedIndex {
   updatedAt: number;
 }
 
-export const DEFAULT_SETTINGS: DeepSeekRagSettings = {
+export const DEFAULT_SETTINGS: ObsidianAIAssistantSettings = {
   apiKey: "",
-  model: "deepseek-chat",
-  apiBaseUrl: "https://api.deepseek.com",
+  model: "gpt-4o-mini",
+  apiBaseUrl: "https://api.openai.com",
   chunkSize: 900,
   overlapSize: 120,
   topK: 6,

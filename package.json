@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-deepseek-rag",
+  "name": "obsidian-ai-assistant",
   "version": "0.1.0",
-  "description": "DeepSeek RAG chat plugin for Obsidian",
+  "description": "AI assistant plugin for Obsidian vault chat, search, and reviewed edits",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -10,8 +10,9 @@
   },
   "keywords": [
     "obsidian",
-    "deepseek",
-    "rag"
+    "ai",
+    "assistant",
+    "vault"
   ],
   "author": "",
   "license": "MIT",

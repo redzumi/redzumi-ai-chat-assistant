@@ -2,22 +2,22 @@ import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
 import { ObsidianAgentTools } from "./agent/obsidianTools";
 import { SemanticChunker } from "./core/chunker";
 import { IndexStore } from "./core/indexStore";
-import { DEFAULT_SETTINGS, DeepSeekRagSettings, IndexCoverage, PersistedIndex } from "./core/types";
+import { DEFAULT_SETTINGS, ObsidianAIAssistantSettings, IndexCoverage, PersistedIndex } from "./core/types";
 import { indexVaultFiles } from "./indexing/indexAll";
 import { RealtimeIndexer } from "./indexing/realtimeIndexer";
 import { GraphSearchEngine } from "./search/graphSearch";
 import { HybridSearchEngine } from "./search/hybridSearch";
-import { DeepSeekClient } from "./services/deepseekClient";
+import { AIChatClient } from "./services/aiChatClient";
 import { CHAT_VIEW_TYPE, ChatView } from "./ui/chatView";
-import { DeepSeekSettingTab } from "./ui/settingsTab";
+import { ObsidianAIAssistantSettingTab } from "./ui/settingsTab";
 
 interface PluginData {
-  settings?: Partial<DeepSeekRagSettings>;
+  settings?: Partial<ObsidianAIAssistantSettings>;
   index?: PersistedIndex;
 }
 
-export default class DeepSeekRAGPlugin extends Plugin {
-  settings: DeepSeekRagSettings = { ...DEFAULT_SETTINGS };
+export default class ObsidianAIAssistantPlugin extends Plugin {
+  settings: ObsidianAIAssistantSettings = { ...DEFAULT_SETTINGS };
 
   private chunker = new SemanticChunker(DEFAULT_SETTINGS.chunkSize, DEFAULT_SETTINGS.overlapSize);
   private readonly indexStore = new IndexStore();
@@ -29,7 +29,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
     this.graphSearchEngine,
     () => this.settings.topK,
   );
-  private readonly deepSeekClient = new DeepSeekClient(
+  private readonly aiChatClient = new AIChatClient(
     () => this.settings,
     () => this.indexStore.getVaultOverview(),
   );
@@ -46,7 +46,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
         new ChatView(
           leaf,
           this.graphSearchEngine,
-          this.deepSeekClient,
+          this.aiChatClient,
           this.agentTools,
           () => this.settings.topK,
           this.settings.includeContextByDefault,
@@ -54,65 +54,65 @@ export default class DeepSeekRAGPlugin extends Plugin {
         ),
     );
 
-    this.addRibbonIcon("message-square", "Open DeepSeek RAG", () => {
+    this.addRibbonIcon("message-square", "Open Obsidian AI Assistant", () => {
       void this.activateView();
     });
 
     this.addCommand({
-      id: "open-deepseek-rag-chat",
-      name: "Open DeepSeek RAG chat",
+      id: "open-obsidian-ai-assistant-chat",
+      name: "Open Obsidian AI Assistant chat",
       callback: () => {
         void this.activateView();
       },
     });
 
     this.addCommand({
-      id: "reindex-deepseek-rag",
-      name: "Re-index vault for DeepSeek RAG",
+      id: "reindex-obsidian-ai-assistant",
+      name: "Re-index vault for Obsidian AI Assistant",
       callback: () => {
         void this.indexVault();
       },
     });
 
     this.addCommand({
-      id: "summarize-current-note-deepseek-rag",
-      name: "DeepSeek RAG: summarize current note",
+      id: "summarize-current-note-obsidian-ai-assistant",
+      name: "Obsidian AI Assistant: summarize current note",
       callback: () => {
         void this.runCurrentNoteTask("summarize");
       },
     });
 
     this.addCommand({
-      id: "review-current-note-deepseek-rag",
-      name: "DeepSeek RAG: review current note",
+      id: "review-current-note-obsidian-ai-assistant",
+      name: "Obsidian AI Assistant: review current note",
       callback: () => {
         void this.runCurrentNoteTask("review");
       },
     });
 
     this.addCommand({
-      id: "extract-tasks-current-note-deepseek-rag",
-      name: "DeepSeek RAG: extract tasks from current note",
+      id: "extract-tasks-current-note-obsidian-ai-assistant",
+      name: "Obsidian AI Assistant: extract tasks from current note",
       callback: () => {
         void this.runCurrentNoteTask("tasks");
       },
     });
 
     this.addCommand({
-      id: "improve-current-note-deepseek-rag",
-      name: "DeepSeek RAG: propose improvements to current note",
+      id: "improve-current-note-obsidian-ai-assistant",
+      name: "Obsidian AI Assistant: propose improvements to current note",
       callback: () => {
         void this.runCurrentNoteTask("improve");
       },
     });
 
-    this.addSettingTab(new DeepSeekSettingTab(this.app, this));
+    this.addSettingTab(new ObsidianAIAssistantSettingTab(this.app, this));
     this.configureRealtimeIndexer();
 
     if (this.indexStore.getAllChunks().length === 0) {
       void this.indexVault().catch((error) => {
-        console.error("DeepSeek RAG initial indexing failed", error);
-        new Notice("DeepSeek RAG: initial indexing failed. See console for details.", 6000);
+        console.error("Obsidian AI Assistant initial indexing failed", error);
+        new Notice("Obsidian AI Assistant: initial indexing failed. See console for details.", 6000);
       });
     }
   }
@@ -140,7 +140,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
     const indexed = await indexVaultFiles(this.app.vault, this.app.metadataCache, this.chunker, this.indexStore);
     this.searchEngine.setChunks(this.indexStore.getAllChunks());
     await this.savePluginData();
-    new Notice(`DeepSeek RAG: indexed ${indexed.indexedFiles}/${indexed.totalFiles} files.`, 3000);
+    new Notice(`Obsidian AI Assistant: indexed ${indexed.indexedFiles}/${indexed.totalFiles} files.`, 3000);
   }
 
   configureRealtimeIndexer(): void {
@@ -183,7 +183,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
     if (!leaf) {
       leaf = this.app.workspace.getRightLeaf(false);
       if (!leaf) {
-        new Notice("DeepSeek RAG: could not open chat pane.", 4000);
+        new Notice("Obsidian AI Assistant: could not open chat pane.", 4000);
         return null;
       }
       await leaf.setViewState({ type: CHAT_VIEW_TYPE, active: true });
@@ -196,7 +196,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
   private async runCurrentNoteTask(task: "summarize" | "review" | "tasks" | "improve"): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
-      new Notice("DeepSeek RAG: no active note.", 3000);
+      new Notice("Obsidian AI Assistant: no active note.", 3000);
       return;
     }
 

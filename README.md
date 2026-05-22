@@ -1,15 +1,17 @@
-# DeepSeek RAG for Obsidian
+# Obsidian AI Assistant
 
-Local-first Obsidian plugin scaffold for asking DeepSeek questions against your markdown notes.
+AI assistant plugin for working with your Obsidian vault.
 
 ## What Works
 
-- Chat view in the right sidebar.
-- DeepSeek chat completions via `/v1/chat/completions`.
-- Local markdown indexing with heading and tag metadata.
-- TF/IDF-style retrieval over indexed chunks.
-- Realtime re-indexing on create, modify, delete, and rename events.
-- Settings tab for API key, model, API URL, chunking, and re-indexing.
+- Chat, Context, and Agent modes in a right-sidebar view.
+- OpenAI-compatible chat completions via `/v1/chat/completions`.
+- Provider presets for OpenAI, DeepSeek, OpenRouter, LM Studio, Ollama, and custom endpoints.
+- Local vault indexing across supported text files, Canvas files, and metadata-only attachments.
+- Graph-aware retrieval using note links, backlinks, and neighboring chunks.
+- Agent tools for searching, opening notes, inspecting links, and reviewing the current note.
+- Reviewed edit proposals with patch previews, Apply/Reject, and batch patch support.
+- Realtime re-indexing on vault create, modify, delete, and rename events.
 
 ## Build
 
@@ -21,11 +23,17 @@ npm run build
 Then copy the contents of `dist/` into:
 
 ```text
-<vault>/.obsidian/plugins/deepseek-rag/
+<vault>/.obsidian/plugins/obsidian-ai-assistant/
 ```
 
-Enable the plugin in Obsidian community plugin settings, then set your DeepSeek API key.
+Enable the plugin in Obsidian community plugin settings, then configure an OpenAI-compatible provider in the plugin settings.
 
-## Notes
+## Provider Notes
 
-The first implementation intentionally avoids native vector database dependencies. That keeps the plugin easy to install inside Obsidian. The search layer is isolated behind `HybridSearchEngine`, so a future LanceDB or embeddings-backed index can replace the local lexical scorer without rewriting the UI.
+The plugin calls:
+
+```text
+<API base URL>/v1/chat/completions
+```
+
+Remote providers usually need an API key. Local providers such as LM Studio and Ollama can leave the API key empty when using a localhost base URL.

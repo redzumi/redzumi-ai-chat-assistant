@@ -1,9 +1,9 @@
 {
-  "id": "deepseek-rag",
-  "name": "DeepSeek RAG",
+  "id": "obsidian-ai-assistant",
+  "name": "Obsidian AI Assistant",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
-  "description": "Ask questions about your Obsidian notes with DeepSeek and local RAG search.",
+  "description": "Chat with an AI assistant that can search your vault, inspect notes, and prepare edits for review.",
   "author": "",
   "authorUrl": "",
   "isDesktopOnly": false

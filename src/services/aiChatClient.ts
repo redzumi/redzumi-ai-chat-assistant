@@ -1,20 +1,20 @@
-import { AgentCompletion, AgentToolExecutor, DeepSeekRagSettings, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
+import { AgentCompletion, AgentToolExecutor, ObsidianAIAssistantSettings, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-export class DeepSeekClient {
+export class AIChatClient {
   constructor(
-    private readonly getSettings: () => DeepSeekRagSettings,
+    private readonly getSettings: () => ObsidianAIAssistantSettings,
     private readonly getVaultOverview: () => string,
   ) {}
 
   async complete(userMessage: string, history: ChatMessage[], context: SearchResult[]): Promise<string> {
     const settings = this.getSettings();
-    if (!settings.apiKey.trim()) {
-      throw new Error("DeepSeek API key is not configured.");
+    if (this.requiresApiKey(settings) && !settings.apiKey.trim()) {
+      throw new Error("AI provider API key is not configured.");
     }
 
     const content = await this.requestCompletion([
@@ -89,16 +89,20 @@ export class DeepSeekClient {
 
   private async requestCompletion(messages: ChatMessage[], maxTokens: number): Promise<string> {
     const settings = this.getSettings();
-    if (!settings.apiKey.trim()) {
-      throw new Error("DeepSeek API key is not configured.");
+    if (this.requiresApiKey(settings) && !settings.apiKey.trim()) {
+      throw new Error("AI provider API key is not configured.");
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (settings.apiKey.trim()) {
+      headers.Authorization = `Bearer ${settings.apiKey}`;
     }
 
     const response = await fetch(`${settings.apiBaseUrl.replace(/\/$/, "")}/v1/chat/completions`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${settings.apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify({
         model: settings.model,
         messages,
@@ -110,16 +114,25 @@ export class DeepSeekClient {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`DeepSeek request failed (${response.status}): ${errorText}`);
+      throw new Error(`AI provider request failed (${response.status}): ${errorText}`);
     }
 
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content;
     if (typeof content !== "string") {
-      throw new Error("DeepSeek returned an unexpected response.");
+      throw new Error("AI provider returned an unexpected response.");
     }
 
     return content.trim();
+  }
+
+  private requiresApiKey(settings: ObsidianAIAssistantSettings): boolean {
+    try {
+      const url = new URL(settings.apiBaseUrl);
+      return !["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname);
+    } catch {
+      return true;
+    }
   }
 
   private buildAgentSystemPrompt(): string {

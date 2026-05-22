@@ -1,10 +1,22 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import DeepSeekRAGPlugin from "../main";
+import { DEFAULT_SETTINGS } from "../core/types";
+import ObsidianAIAssistantPlugin from "../main";
 
-export class DeepSeekSettingTab extends PluginSettingTab {
+const PROVIDER_PRESETS = {
+  custom: { name: "Custom OpenAI-compatible", apiBaseUrl: "", model: "" },
+  openai: { name: "OpenAI", apiBaseUrl: "https://api.openai.com", model: "gpt-4o-mini" },
+  deepseek: { name: "DeepSeek", apiBaseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
+  openrouter: { name: "OpenRouter", apiBaseUrl: "https://openrouter.ai/api", model: "openai/gpt-4o-mini" },
+  lmstudio: { name: "LM Studio", apiBaseUrl: "http://localhost:1234", model: "local-model" },
+  ollama: { name: "Ollama", apiBaseUrl: "http://localhost:11434", model: "llama3.1" },
+} as const;
+
+type ProviderPreset = keyof typeof PROVIDER_PRESETS;
+
+export class ObsidianAIAssistantSettingTab extends PluginSettingTab {
   constructor(
     app: App,
-    private readonly plugin: DeepSeekRAGPlugin,
+    private readonly plugin: ObsidianAIAssistantPlugin,
   ) {
     super(app, plugin);
   }
@@ -13,15 +25,35 @@ export class DeepSeekSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "DeepSeek RAG" });
+    containerEl.createEl("h2", { text: "Obsidian AI Assistant" });
 
     new Setting(containerEl)
-      .setName("DeepSeek API key")
-      .setDesc("Stored in Obsidian plugin data on this device.")
+      .setName("Provider preset")
+      .setDesc("Sets a base URL and starter model for common OpenAI-compatible providers.")
+      .addDropdown((dropdown) => {
+        for (const [key, preset] of Object.entries(PROVIDER_PRESETS)) {
+          dropdown.addOption(key, preset.name);
+        }
+        dropdown.setValue(detectProviderPreset(this.plugin.settings.apiBaseUrl));
+        dropdown.onChange(async (value) => {
+          const preset = PROVIDER_PRESETS[value as ProviderPreset];
+          if (!preset || value === "custom") {
+            return;
+          }
+          this.plugin.settings.apiBaseUrl = preset.apiBaseUrl;
+          this.plugin.settings.model = preset.model;
+          await this.plugin.savePluginData();
+          this.display();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("API key")
+      .setDesc("Stored in Obsidian plugin data on this device. Local providers can leave this empty.")
       .addText((text) => {
         text.inputEl.type = "password";
         text
-          .setPlaceholder("sk-...")
+          .setPlaceholder("API key")
           .setValue(this.plugin.settings.apiKey)
           .onChange(async (value) => {
             this.plugin.settings.apiKey = value.trim();
@@ -31,20 +63,20 @@ export class DeepSeekSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Model")
-      .setDesc("Chat model used for answers.")
+      .setDesc("Any model accepted by your configured OpenAI-compatible provider.")
       .addText((text) =>
         text.setValue(this.plugin.settings.model).onChange(async (value) => {
-          this.plugin.settings.model = value.trim() || "deepseek-chat";
+          this.plugin.settings.model = value.trim() || DEFAULT_SETTINGS.model;
           await this.plugin.savePluginData();
         }),
       );
 
     new Setting(containerEl)
       .setName("API base URL")
-      .setDesc("Change only if you use a compatible proxy.")
+      .setDesc("OpenAI-compatible base URL. The plugin calls /v1/chat/completions.")
       .addText((text) =>
         text.setValue(this.plugin.settings.apiBaseUrl).onChange(async (value) => {
-          this.plugin.settings.apiBaseUrl = value.trim() || "https://api.deepseek.com";
+          this.plugin.settings.apiBaseUrl = value.trim() || DEFAULT_SETTINGS.apiBaseUrl;
           await this.plugin.savePluginData();
         }),
       );
@@ -154,4 +186,14 @@ export class DeepSeekSettingTab extends PluginSettingTab {
           }),
       );
   }
+}
+
+function detectProviderPreset(apiBaseUrl: string): ProviderPreset {
+  const normalized = apiBaseUrl.replace(/\/$/, "");
+  for (const [key, preset] of Object.entries(PROVIDER_PRESETS)) {
+    if (preset.apiBaseUrl && preset.apiBaseUrl === normalized) {
+      return key as ProviderPreset;
+    }
+  }
+  return "custom";
 }

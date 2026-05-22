@@ -209,16 +209,15 @@ export default class DeepSeekRAGPlugin extends Plugin {
   }
 
   private buildCurrentNotePrompt(task: "summarize" | "review" | "tasks" | "improve", path: string): string {
-    const prefix = `Use openNote on "${path}" first. Treat it as the current note.`;
     switch (task) {
       case "summarize":
-        return `${prefix} Summarize the note clearly, cite the file path, and mention any obvious missing context from linked notes.`;
+        return `Summarize current note: ${path}\n\nUse openNote on "${path}" first. Treat it as the current note. Summarize it clearly, cite the file path, and mention any obvious missing context from linked notes.`;
       case "review":
-        return `${prefix} Review the note for clarity, structure, contradictions, stale TODOs, and missing links. Do not edit unless I ask; give concrete suggestions with section references.`;
+        return `Review current note: ${path}\n\nUse openNote on "${path}" first. Treat it as the current note. Review it for clarity, structure, contradictions, stale TODOs, and missing links. Do not edit unless I ask; give concrete suggestions with section references.`;
       case "tasks":
-        return `${prefix} Extract actionable tasks from the note. Group them by urgency when possible and cite the file path. Do not edit the file.`;
+        return `Extract tasks from current note: ${path}\n\nUse openNote on "${path}" first. Treat it as the current note. Extract actionable tasks from the note. Group them by urgency when possible and cite the file path. Do not edit the file.`;
       case "improve":
-        return `${prefix} Propose concrete improvements to this note. If small text edits are useful, use proposePatch or proposePatchBatch so I can review them before applying.`;
+        return `Propose improvements to current note: ${path}\n\nUse openNote on "${path}" first. Treat it as the current note. Propose concrete improvements to this note. If small text edits are useful, use proposePatch or proposePatchBatch so I can review them before applying.`;
     }
   }
 }

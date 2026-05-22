@@ -2,16 +2,43 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 8px;
+  min-width: 0;
 }
 
 .deepseek-rag-toolbar {
   align-items: center;
   border-bottom: 1px solid var(--background-modifier-border);
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
+  justify-content: space-between;
   padding: 8px;
+}
+
+.deepseek-rag-mode-control {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  padding: 2px;
+}
+
+.deepseek-rag-mode-button {
+  border-radius: 4px;
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+  height: 28px;
+  overflow: hidden;
+  padding: 0 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deepseek-rag-mode-button.is-active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
 }
 
 .deepseek-rag-messages {
@@ -19,6 +46,7 @@
   flex: 1;
   flex-direction: column;
   gap: 10px;
+  min-height: 0;
   overflow-y: auto;
   padding: 12px;
 }
@@ -27,6 +55,7 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   max-width: 92%;
+  overflow-wrap: anywhere;
   padding: 10px 12px;
   white-space: pre-wrap;
 }
@@ -47,6 +76,15 @@
   color: var(--text-error);
 }
 
+.deepseek-rag-status {
+  align-self: flex-start;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  padding: 8px 10px;
+}
+
 .deepseek-rag-input-row {
   border-top: 1px solid var(--background-modifier-border);
   display: flex;
@@ -56,64 +94,71 @@
 
 .deepseek-rag-input {
   flex: 1;
-  min-height: 70px;
+  min-height: 64px;
+  min-width: 0;
   resize: vertical;
 }
 
-.deepseek-rag-sources {
+.deepseek-rag-panel {
   border-top: 1px solid var(--background-modifier-border);
+}
+
+.deepseek-rag-panel-header {
+  align-items: center;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-normal);
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-  padding: 8px 12px 12px;
-}
-
-.deepseek-rag-source {
-  background: var(--background-secondary);
-  border-radius: 6px;
-  padding: 8px;
-}
-
-.deepseek-rag-source-title {
-  color: var(--text-accent);
   font-weight: 600;
+  gap: 6px;
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 6px 12px;
+  width: 100%;
 }
 
-.deepseek-rag-source-snippet {
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.deepseek-rag-edits {
-  border-top: 1px solid var(--background-modifier-border);
+.deepseek-rag-panel-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 320px;
+  max-height: 280px;
   overflow-y: auto;
-  padding: 8px 12px 12px;
+  padding: 0 12px 12px;
 }
 
+.deepseek-rag-panel-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.deepseek-rag-source,
 .deepseek-rag-edit {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   padding: 8px;
 }
 
+.deepseek-rag-source-title,
 .deepseek-rag-edit-title {
   color: var(--text-accent);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
+.deepseek-rag-source-snippet,
 .deepseek-rag-edit-summary {
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.deepseek-rag-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .deepseek-rag-diff {
@@ -144,18 +189,9 @@
 
 .deepseek-rag-edit-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
-}
-
-.deepseek-rag-working-set {
-  border-top: 1px solid var(--background-modifier-border);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding: 8px 12px 12px;
 }
 
 .deepseek-rag-working-set-item {

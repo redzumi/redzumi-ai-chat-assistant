@@ -103,7 +103,7 @@ export class DeepSeekSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Agent mode by default")
-      .setDesc("New chat panes can inspect the vault with read-only tools before answering.")
+      .setDesc("New chat panes can inspect the vault and prepare edits for review before answering.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.agentModeByDefault).onChange(async (value) => {
           this.plugin.settings.agentModeByDefault = value;
@@ -113,7 +113,7 @@ export class DeepSeekSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Realtime indexing")
-      .setDesc("Update the local index when markdown files change.")
+      .setDesc("Update the local index when vault files change.")
       .addToggle((toggle) =>
         toggle.setValue(this.plugin.settings.realtimeIndexing).onChange(async (value) => {
           this.plugin.settings.realtimeIndexing = value;

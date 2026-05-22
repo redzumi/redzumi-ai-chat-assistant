@@ -11,14 +11,22 @@ interface ChatMessage {
   error?: boolean;
 }
 
+type ChatMode = "chat" | "rag" | "agent";
+type PanelId = "edits" | "workingSet" | "sources";
+
 export class ChatView extends ItemView {
   private messages: ChatMessage[] = [];
-  private includeContext: boolean;
-  private agentMode: boolean;
+  private mode: ChatMode;
   private lastSources: SearchResult[] = [];
   private pendingEdits: PendingEdit[] = [];
   private workingSet: WorkingSetItem[] = [];
   private isSending = false;
+  private statusText = "";
+  private readonly expandedPanels: Record<PanelId, boolean> = {
+    edits: true,
+    workingSet: false,
+    sources: false,
+  };
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -30,8 +38,7 @@ export class ChatView extends ItemView {
     agentModeByDefault: boolean,
   ) {
     super(leaf);
-    this.includeContext = includeContextByDefault;
-    this.agentMode = agentModeByDefault;
+    this.mode = agentModeByDefault ? "agent" : includeContextByDefault ? "rag" : "chat";
   }
 
   getViewType(): string {
@@ -57,7 +64,7 @@ export class ChatView extends ItemView {
       return;
     }
 
-    this.agentMode = true;
+    this.mode = "agent";
     void this.sendMessage(content);
   }
 
@@ -65,21 +72,7 @@ export class ChatView extends ItemView {
     this.containerEl.empty();
 
     const toolbar = this.containerEl.createDiv({ cls: "deepseek-rag-toolbar" });
-    const contextLabel = toolbar.createEl("label");
-    const contextToggle = contextLabel.createEl("input", { type: "checkbox" });
-    contextToggle.checked = this.includeContext;
-    contextLabel.appendText(" Use note context");
-    this.registerDomEvent(contextToggle, "change", () => {
-      this.includeContext = contextToggle.checked;
-    });
-
-    const agentLabel = toolbar.createEl("label");
-    const agentToggle = agentLabel.createEl("input", { type: "checkbox" });
-    agentToggle.checked = this.agentMode;
-    agentLabel.appendText(" Agent");
-    this.registerDomEvent(agentToggle, "change", () => {
-      this.agentMode = agentToggle.checked;
-    });
+    this.renderModeControl(toolbar);
 
     const clearButton = toolbar.createEl("button", { attr: { "aria-label": "Clear chat" } });
     setIcon(clearButton, "trash-2");
@@ -95,12 +88,16 @@ export class ChatView extends ItemView {
     if (this.messages.length === 0) {
       messagesEl.createEl("div", {
         cls: "setting-item-description",
-        text: "Ask a question about your notes.",
+        text: this.getEmptyStateText(),
       });
     }
 
     for (const message of this.messages) {
       void this.renderMessage(messagesEl, message);
+    }
+
+    if (this.isSending) {
+      messagesEl.createDiv({ cls: "deepseek-rag-status", text: this.statusText || "Working..." });
     }
 
     if (this.pendingEdits.length > 0) {
@@ -117,6 +114,38 @@ export class ChatView extends ItemView {
 
     this.renderInput();
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  private renderModeControl(toolbar: HTMLElement): void {
+    const modeControl = toolbar.createDiv({ cls: "deepseek-rag-mode-control", attr: { "aria-label": "Chat mode" } });
+    const modes: Array<{ mode: ChatMode; label: string; description: string }> = [
+      { mode: "chat", label: "Chat", description: "No note context" },
+      { mode: "rag", label: "RAG", description: "Search note context before answering" },
+      { mode: "agent", label: "Agent", description: "Inspect vault and propose edits" },
+    ];
+
+    for (const item of modes) {
+      const button = modeControl.createEl("button", {
+        cls: `deepseek-rag-mode-button ${this.mode === item.mode ? "is-active" : ""}`,
+        text: item.label,
+        attr: { "aria-label": item.description },
+      });
+      button.disabled = this.isSending;
+      this.registerDomEvent(button, "click", () => {
+        this.mode = item.mode;
+        this.render();
+      });
+    }
+  }
+
+  private getEmptyStateText(): string {
+    if (this.mode === "agent") {
+      return "Ask the agent to inspect notes, review files, or prepare edits.";
+    }
+    if (this.mode === "rag") {
+      return "Ask a question using indexed note context.";
+    }
+    return "Ask a plain chat question.";
   }
 
   private async renderMessage(parent: HTMLElement, message: ChatMessage): Promise<void> {
@@ -137,11 +166,13 @@ export class ChatView extends ItemView {
   }
 
   private renderSources(): void {
-    const sourcesEl = this.containerEl.createDiv({ cls: "deepseek-rag-sources" });
-    sourcesEl.createEl("div", { cls: "setting-item-name", text: "Sources" });
+    const body = this.renderPanel("sources", `Sources (${this.lastSources.length})`);
+    if (!body) {
+      return;
+    }
 
     for (const result of this.lastSources) {
-      const sourceEl = sourcesEl.createDiv({ cls: "deepseek-rag-source" });
+      const sourceEl = body.createDiv({ cls: "deepseek-rag-source" });
       const title = sourceEl.createDiv({ cls: "deepseek-rag-source-title" });
       title.setText(result.chunk.filePath);
       sourceEl.createDiv({
@@ -152,11 +183,25 @@ export class ChatView extends ItemView {
   }
 
   private renderPendingEdits(): void {
-    const editsEl = this.containerEl.createDiv({ cls: "deepseek-rag-edits" });
-    editsEl.createEl("div", { cls: "setting-item-name", text: "Pending edits" });
+    const body = this.renderPanel("edits", `Pending edits (${this.pendingEdits.length})`);
+    if (!body) {
+      return;
+    }
+
+    const batchActions = body.createDiv({ cls: "deepseek-rag-panel-actions" });
+    const applyAllButton = batchActions.createEl("button", { cls: "mod-cta", text: "Apply all" });
+    const rejectAllButton = batchActions.createEl("button", { text: "Reject all" });
+    applyAllButton.disabled = this.isSending;
+    this.registerDomEvent(applyAllButton, "click", () => {
+      void this.applyAllPendingEdits();
+    });
+    this.registerDomEvent(rejectAllButton, "click", () => {
+      this.pendingEdits = [];
+      this.render();
+    });
 
     for (const edit of this.pendingEdits) {
-      const editEl = editsEl.createDiv({ cls: "deepseek-rag-edit" });
+      const editEl = body.createDiv({ cls: "deepseek-rag-edit" });
       const header = editEl.createDiv({ cls: "deepseek-rag-edit-header" });
       header.createDiv({ cls: "deepseek-rag-edit-title", text: edit.path });
       header.createDiv({ cls: "deepseek-rag-edit-summary", text: `${edit.kind === "patch" ? "Patch" : "Full edit"}: ${edit.summary}` });
@@ -175,9 +220,14 @@ export class ChatView extends ItemView {
       }
 
       const actions = editEl.createDiv({ cls: "deepseek-rag-edit-actions" });
+      const openButton = actions.createEl("button", { text: "Open" });
       const applyButton = actions.createEl("button", { cls: "mod-cta", text: "Apply" });
       const rejectButton = actions.createEl("button", { text: "Reject" });
+      applyButton.disabled = this.isSending;
 
+      this.registerDomEvent(openButton, "click", () => {
+        void this.app.workspace.openLinkText(edit.path, "", false);
+      });
       this.registerDomEvent(applyButton, "click", () => {
         void this.applyPendingEdit(edit);
       });
@@ -189,28 +239,49 @@ export class ChatView extends ItemView {
   }
 
   private renderWorkingSet(): void {
-    const workingSetEl = this.containerEl.createDiv({ cls: "deepseek-rag-working-set" });
-    workingSetEl.createEl("div", { cls: "setting-item-name", text: "Working set" });
+    const body = this.renderPanel("workingSet", `Working set (${this.workingSet.length})`);
+    if (!body) {
+      return;
+    }
 
     for (const item of this.workingSet.slice(0, 80)) {
-      const itemEl = workingSetEl.createDiv({ cls: "deepseek-rag-working-set-item" });
+      const itemEl = body.createDiv({ cls: "deepseek-rag-working-set-item" });
       itemEl.createSpan({ cls: `deepseek-rag-working-set-role deepseek-rag-working-set-${item.role}`, text: item.role });
       itemEl.createSpan({ cls: "deepseek-rag-working-set-path", text: item.path });
       itemEl.createSpan({ cls: "deepseek-rag-working-set-detail", text: item.detail });
     }
 
     if (this.workingSet.length > 80) {
-      workingSetEl.createDiv({ cls: "setting-item-description", text: `${this.workingSet.length - 80} more items hidden.` });
+      body.createDiv({ cls: "setting-item-description", text: `${this.workingSet.length - 80} more items hidden.` });
     }
   }
 
+  private renderPanel(panelId: PanelId, title: string): HTMLElement | null {
+    const panelEl = this.containerEl.createDiv({ cls: "deepseek-rag-panel" });
+    const header = panelEl.createEl("button", {
+      cls: "deepseek-rag-panel-header",
+      attr: { "aria-expanded": String(this.expandedPanels[panelId]) },
+    });
+    setIcon(header, this.expandedPanels[panelId] ? "chevron-down" : "chevron-right");
+    header.createSpan({ text: title });
+    this.registerDomEvent(header, "click", () => {
+      this.expandedPanels[panelId] = !this.expandedPanels[panelId];
+      this.render();
+    });
+
+    if (!this.expandedPanels[panelId]) {
+      return null;
+    }
+
+    return panelEl.createDiv({ cls: `deepseek-rag-panel-body deepseek-rag-panel-${panelId}` });
+  }
 
   private renderInput(): void {
     const inputRow = this.containerEl.createDiv({ cls: "deepseek-rag-input-row" });
     const textarea = inputRow.createEl("textarea", {
       cls: "deepseek-rag-input",
       attr: {
-        placeholder: "Message DeepSeek...",
+        placeholder: this.mode === "agent" ? "Ask the agent..." : this.mode === "rag" ? "Ask with note context..." : "Message DeepSeek...",
       },
     });
     const sendButton = inputRow.createEl("button", { cls: "mod-cta", attr: { "aria-label": "Send" } });
@@ -246,7 +317,9 @@ export class ChatView extends ItemView {
 
     try {
       let answer: string;
-      if (this.agentMode) {
+      if (this.mode === "agent") {
+        this.statusText = "Agent is inspecting the vault...";
+        this.render();
         const result = await this.deepSeekClient.completeWithAgent(content, history, this.agentTools);
         this.lastSources = result.sources;
         this.pendingEdits = this.pendingEdits.concat(result.pendingEdits);
@@ -257,7 +330,9 @@ export class ChatView extends ItemView {
         );
         answer = result.answer;
       } else {
-        this.lastSources = this.includeContext ? this.searchEngine.search(content, this.getTopK()) : [];
+        this.statusText = this.mode === "rag" ? "Searching note context..." : "Waiting for model...";
+        this.render();
+        this.lastSources = this.mode === "rag" ? this.searchEngine.search(content, this.getTopK()) : [];
         this.workingSet = mergeWorkingSet(
           this.workingSet,
           unique(this.lastSources.map((source) => source.chunk.filePath)).map((path) => ({
@@ -275,6 +350,7 @@ export class ChatView extends ItemView {
       this.messages.push({ role: "assistant", content: message, error: true });
     } finally {
       this.isSending = false;
+      this.statusText = "";
       this.render();
     }
   }
@@ -290,6 +366,25 @@ export class ChatView extends ItemView {
       const message = error instanceof Error ? error.message : String(error);
       new Notice(message, 6000);
     }
+  }
+
+  private async applyAllPendingEdits(): Promise<void> {
+    const edits = [...this.pendingEdits];
+    for (const edit of edits) {
+      try {
+        await this.agentTools.applyEdit(edit);
+        this.pendingEdits = this.pendingEdits.filter((pending) => pending.id !== edit.id);
+        this.workingSet = mergeWorkingSet(this.workingSet, [{ path: edit.path, role: "edited", detail: `Applied: ${edit.summary}` }]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        new Notice(message, 6000);
+        this.render();
+        return;
+      }
+    }
+
+    new Notice(`Applied ${edits.length} edits.`, 3000);
+    this.render();
   }
 }
 

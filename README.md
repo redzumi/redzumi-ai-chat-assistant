@@ -18,7 +18,7 @@ npm install
 npm run build
 ```
 
-Then copy `main.js`, `manifest.json`, and `styles.css` into:
+Then copy the contents of `dist/` into:
 
 ```text
 <vault>/.obsidian/plugins/deepseek-rag/

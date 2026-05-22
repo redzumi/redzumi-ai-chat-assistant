@@ -127,7 +127,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
 
   private async activateView(): Promise<void> {
     const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
-    let leaf = leaves[0];
+    let leaf: WorkspaceLeaf | null = leaves[0] ?? null;
 
     if (!leaf) {
       leaf = this.app.workspace.getRightLeaf(false);

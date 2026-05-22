@@ -3,3 +3,4 @@ main.js
 dist/
 *.map
 .DS_Store
+*.zip

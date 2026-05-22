@@ -51,6 +51,16 @@ export class ChatView extends ItemView {
     this.render();
   }
 
+  startAgentTask(content: string): void {
+    if (this.isSending) {
+      new Notice("DeepSeek RAG is already working.", 3000);
+      return;
+    }
+
+    this.agentMode = true;
+    void this.sendMessage(content);
+  }
+
   private render(): void {
     this.containerEl.empty();
 

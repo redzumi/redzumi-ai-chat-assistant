@@ -133,6 +133,8 @@ export class DeepSeekClient {
       "",
       "Available tools:",
       "- searchNotes: args {\"query\":\"...\",\"topK\":6}. Search indexed chunks.",
+      "- getCurrentNote: args {}. Get the current active note path and metadata.",
+      "- openCurrentNote: args {\"maxChars\":6000}. Read the current active note.",
       "- openNote: args {\"path\":\"...\",\"maxChars\":6000}. Read a specific text note/file.",
       "- listFolder: args {\"path\":\"...\"}. List files in a folder. Use empty path for vault root.",
       "- getLinks: args {\"path\":\"...\"}. Show outgoing links and backlinks for a file.",

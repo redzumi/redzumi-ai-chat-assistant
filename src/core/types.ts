@@ -66,7 +66,7 @@ export interface AgentCompletion {
   workingSet: WorkingSetItem[];
 }
 
-export type WorkingSetRole = "searched" | "opened" | "listed" | "linked" | "edited";
+export type WorkingSetRole = "current" | "searched" | "opened" | "listed" | "linked" | "edited";
 
 export interface WorkingSetItem {
   path: string;

@@ -17,6 +17,10 @@ export class ObsidianAgentTools {
     switch (toolName) {
       case "searchNotes":
         return this.searchNotes(args);
+      case "getCurrentNote":
+        return this.getCurrentNote();
+      case "openCurrentNote":
+        return this.openCurrentNote(args);
       case "openNote":
         return this.openNote(args);
       case "listFolder":
@@ -33,7 +37,7 @@ export class ObsidianAgentTools {
         return this.proposePatchBatch(args);
       default:
         return {
-          content: `Unknown tool: ${toolName}. Available tools: searchNotes, openNote, listFolder, getLinks, getVaultOverview, proposePatch, proposePatchBatch, proposeEdit.`,
+          content: `Unknown tool: ${toolName}. Available tools: searchNotes, getCurrentNote, openCurrentNote, openNote, listFolder, getLinks, getVaultOverview, proposePatch, proposePatchBatch, proposeEdit.`,
         };
     }
   }
@@ -91,6 +95,27 @@ export class ObsidianAgentTools {
         })
         .join("\n\n---\n\n"),
     };
+  }
+
+  private getCurrentNote(): AgentToolExecution {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      return { content: "No active note is available." };
+    }
+
+    return {
+      workingSetItems: [{ path: file.path, role: "current", detail: "Current active note" }],
+      content: [`Current note: ${file.path}`, `Extension: .${file.extension}`, `Size: ${file.stat.size} bytes`].join("\n"),
+    };
+  }
+
+  private openCurrentNote(args: Record<string, unknown>): Promise<AgentToolExecution> {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      return Promise.resolve({ content: "No active note is available." });
+    }
+
+    return this.openNote({ ...args, path: file.path });
   }
 
   private async openNote(args: Record<string, unknown>): Promise<AgentToolExecution> {

@@ -74,6 +74,38 @@ export default class DeepSeekRAGPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: "summarize-current-note-deepseek-rag",
+      name: "DeepSeek RAG: summarize current note",
+      callback: () => {
+        void this.runCurrentNoteTask("summarize");
+      },
+    });
+
+    this.addCommand({
+      id: "review-current-note-deepseek-rag",
+      name: "DeepSeek RAG: review current note",
+      callback: () => {
+        void this.runCurrentNoteTask("review");
+      },
+    });
+
+    this.addCommand({
+      id: "extract-tasks-current-note-deepseek-rag",
+      name: "DeepSeek RAG: extract tasks from current note",
+      callback: () => {
+        void this.runCurrentNoteTask("tasks");
+      },
+    });
+
+    this.addCommand({
+      id: "improve-current-note-deepseek-rag",
+      name: "DeepSeek RAG: propose improvements to current note",
+      callback: () => {
+        void this.runCurrentNoteTask("improve");
+      },
+    });
+
     this.addSettingTab(new DeepSeekSettingTab(this.app, this));
     this.configureRealtimeIndexer();
 
@@ -144,7 +176,7 @@ export default class DeepSeekRAGPlugin extends Plugin {
     this.chunker = new SemanticChunker(this.settings.chunkSize, this.settings.overlapSize);
   }
 
-  private async activateView(): Promise<void> {
+  private async activateView(): Promise<ChatView | null> {
     const leaves = this.app.workspace.getLeavesOfType(CHAT_VIEW_TYPE);
     let leaf: WorkspaceLeaf | null = leaves[0] ?? null;
 
@@ -152,11 +184,41 @@ export default class DeepSeekRAGPlugin extends Plugin {
       leaf = this.app.workspace.getRightLeaf(false);
       if (!leaf) {
         new Notice("DeepSeek RAG: could not open chat pane.", 4000);
-        return;
+        return null;
       }
       await leaf.setViewState({ type: CHAT_VIEW_TYPE, active: true });
     }
 
     this.app.workspace.revealLeaf(leaf);
+    return leaf.view instanceof ChatView ? leaf.view : null;
+  }
+
+  private async runCurrentNoteTask(task: "summarize" | "review" | "tasks" | "improve"): Promise<void> {
+    const file = this.app.workspace.getActiveFile();
+    if (!file) {
+      new Notice("DeepSeek RAG: no active note.", 3000);
+      return;
+    }
+
+    const view = await this.activateView();
+    if (!view) {
+      return;
+    }
+
+    view.startAgentTask(this.buildCurrentNotePrompt(task, file.path));
+  }
+
+  private buildCurrentNotePrompt(task: "summarize" | "review" | "tasks" | "improve", path: string): string {
+    const prefix = `Use openNote on "${path}" first. Treat it as the current note.`;
+    switch (task) {
+      case "summarize":
+        return `${prefix} Summarize the note clearly, cite the file path, and mention any obvious missing context from linked notes.`;
+      case "review":
+        return `${prefix} Review the note for clarity, structure, contradictions, stale TODOs, and missing links. Do not edit unless I ask; give concrete suggestions with section references.`;
+      case "tasks":
+        return `${prefix} Extract actionable tasks from the note. Group them by urgency when possible and cite the file path. Do not edit the file.`;
+      case "improve":
+        return `${prefix} Propose concrete improvements to this note. If small text edits are useful, use proposePatch or proposePatchBatch so I can review them before applying.`;
+    }
   }
 }

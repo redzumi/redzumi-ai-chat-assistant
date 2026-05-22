@@ -50,6 +50,7 @@ export interface AgentToolExecution {
   content: string;
   sources?: SearchResult[];
   pendingEdit?: PendingEdit;
+  pendingEdits?: PendingEdit[];
 }
 
 export interface AgentToolExecutor {

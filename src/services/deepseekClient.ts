@@ -55,6 +55,9 @@ export class DeepSeekClient {
       if (result.pendingEdit) {
         pendingEdits.push(result.pendingEdit);
       }
+      for (const pendingEdit of result.pendingEdits ?? []) {
+        pendingEdits.push(pendingEdit);
+      }
       messages.push({
         role: "user",
         content: [
@@ -126,11 +129,12 @@ export class DeepSeekClient {
       "- getLinks: args {\"path\":\"...\"}. Show outgoing links and backlinks for a file.",
       "- getVaultOverview: args {}. Show the current vault index overview.",
       "- proposePatch: args {\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}. Prepare a small pending patch for user review.",
+      "- proposePatchBatch: args {\"summary\":\"...\",\"patches\":[{\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}]}. Prepare multiple pending patches for user review.",
       "- proposeEdit: args {\"path\":\"...\",\"summary\":\"...\",\"newContent\":\"full replacement file content\"}. Prepare a pending edit for user review.",
       "",
-      "Prefer proposePatch for normal edits. Use proposeEdit only when the user asks to rewrite a full file or the patch would be larger than the original file.",
-      "Before proposePatch or proposeEdit, open the target file unless the exact current content is already available in the conversation.",
-      "For proposePatch, find must be an exact substring from the current file and specific enough to match once.",
+      "Prefer proposePatch for one normal edit and proposePatchBatch for multiple normal edits. Use proposeEdit only when the user asks to rewrite a full file or the patch would be larger than the original file.",
+      "Before proposePatch, proposePatchBatch, or proposeEdit, open each target file unless the exact current content is already available in the conversation.",
+      "For proposePatch and proposePatchBatch, every find must be an exact substring from the current file and specific enough to match once.",
       "For proposeEdit, newContent must be the complete replacement content for the file, not a partial patch.",
       "",
       "Respond with exactly one JSON object and no markdown.",

@@ -29,9 +29,11 @@ export class ObsidianAgentTools {
         return this.proposeEdit(args);
       case "proposePatch":
         return this.proposePatch(args);
+      case "proposePatchBatch":
+        return this.proposePatchBatch(args);
       default:
         return {
-          content: `Unknown tool: ${toolName}. Available tools: searchNotes, openNote, listFolder, getLinks, getVaultOverview, proposePatch, proposeEdit.`,
+          content: `Unknown tool: ${toolName}. Available tools: searchNotes, openNote, listFolder, getLinks, getVaultOverview, proposePatch, proposePatchBatch, proposeEdit.`,
         };
     }
   }
@@ -243,29 +245,14 @@ export class ObsidianAgentTools {
     }
 
     const originalContent = await this.app.vault.cachedRead(file);
-    const matchCount = countOccurrences(originalContent, find);
-    if (matchCount !== 1) {
+    const error = validatePatch(originalContent, find, file.path);
+    if (error) {
       return {
-        content: [
-          `Patch rejected for ${file.path}.`,
-          `The find text matched ${matchCount} times; it must match exactly once.`,
-          "Open the file and propose a more specific find block.",
-        ].join("\n"),
+        content: error,
       };
     }
 
-    const newContent = originalContent.replace(find, replace);
-    const pendingEdit: PendingEdit = {
-      id: `${file.path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
-      path: file.path,
-      kind: "patch",
-      summary,
-      originalContent,
-      newContent,
-      find,
-      replace,
-      createdAt: Date.now(),
-    };
+    const pendingEdit = createPatchEdit(file.path, summary, originalContent, find, replace);
 
     return {
       pendingEdit,
@@ -273,6 +260,65 @@ export class ObsidianAgentTools {
         `Prepared a pending patch for ${file.path}.`,
         `Summary: ${summary}`,
         "The patch has not been applied. The user must review and apply it.",
+      ].join("\n"),
+    };
+  }
+
+  private async proposePatchBatch(args: Record<string, unknown>): Promise<AgentToolExecution> {
+    const summary = getStringArg(args, "summary") ?? "Proposed patch batch";
+    const patches = Array.isArray(args.patches) ? args.patches : [];
+    if (patches.length === 0) {
+      return { content: "Missing required argument: patches." };
+    }
+    if (patches.length > 20) {
+      return { content: "Patch batch rejected: at most 20 patches are allowed at once." };
+    }
+
+    const currentByPath = new Map<string, string>();
+    const stagedByPath = new Map<string, string>();
+    const pendingInputs: Array<{ path: string; summary: string; originalContent: string; find: string; replace: string }> = [];
+
+    for (let index = 0; index < patches.length; index += 1) {
+      const patch = patches[index];
+      if (!isRecord(patch)) {
+        return { content: `Patch batch rejected: patch ${index + 1} must be an object.` };
+      }
+
+      const path = getStringArg(patch, "path");
+      const find = getStringArg(patch, "find");
+      const replace = getStringArg(patch, "replace");
+      const patchSummary = getStringArg(patch, "summary") ?? summary;
+      if (!path || typeof find !== "string" || find.length === 0 || typeof replace !== "string") {
+        return { content: `Patch batch rejected: patch ${index + 1} requires path, find, and replace.` };
+      }
+
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (!(file instanceof TFile)) {
+        return { content: `Patch batch rejected: file not found: ${path}` };
+      }
+      if (!READABLE_EXTENSIONS.has(file.extension)) {
+        return { content: `Patch batch rejected: cannot patch metadata-only file: ${path}` };
+      }
+
+      const originalContent = currentByPath.get(file.path) ?? (await this.app.vault.cachedRead(file));
+      currentByPath.set(file.path, originalContent);
+      const stagedContent = stagedByPath.get(file.path) ?? originalContent;
+      const error = validatePatch(stagedContent, find, file.path, index + 1);
+      if (error) {
+        return { content: error };
+      }
+
+      stagedByPath.set(file.path, stagedContent.replace(find, replace));
+      pendingInputs.push({ path: file.path, summary: patchSummary, originalContent, find, replace });
+    }
+
+    const pendingEdits = pendingInputs.map((patch) => createPatchEdit(patch.path, patch.summary, patch.originalContent, patch.find, patch.replace));
+    return {
+      pendingEdits,
+      content: [
+        `Prepared ${pendingEdits.length} pending patches.`,
+        `Summary: ${summary}`,
+        "The patches have not been applied. The user must review and apply them.",
       ].join("\n"),
     };
   }
@@ -294,6 +340,38 @@ function clip(content: string, maxChars: number): string {
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function createPatchEdit(path: string, summary: string, originalContent: string, find: string, replace: string): PendingEdit {
+  return {
+    id: `${path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    path,
+    kind: "patch",
+    summary,
+    originalContent,
+    newContent: originalContent.replace(find, replace),
+    find,
+    replace,
+    createdAt: Date.now(),
+  };
+}
+
+function validatePatch(content: string, find: string, path: string, index?: number): string | null {
+  const matchCount = countOccurrences(content, find);
+  if (matchCount === 1) {
+    return null;
+  }
+
+  const prefix = index ? `Patch batch rejected at patch ${index} for ${path}.` : `Patch rejected for ${path}.`;
+  return [
+    prefix,
+    `The find text matched ${matchCount} times; it must match exactly once.`,
+    "Open the file and propose a more specific find block.",
+  ].join("\n");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function countOccurrences(content: string, needle: string): number {

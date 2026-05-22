@@ -66,9 +66,12 @@ export interface AgentCompletion {
 export interface PendingEdit {
   id: string;
   path: string;
+  kind: "full" | "patch";
   summary: string;
   originalContent: string;
   newContent: string;
+  find?: string;
+  replace?: string;
   createdAt: number;
 }
 

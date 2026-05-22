@@ -143,19 +143,19 @@ export class ChatView extends ItemView {
       const editEl = editsEl.createDiv({ cls: "deepseek-rag-edit" });
       const header = editEl.createDiv({ cls: "deepseek-rag-edit-header" });
       header.createDiv({ cls: "deepseek-rag-edit-title", text: edit.path });
-      header.createDiv({ cls: "deepseek-rag-edit-summary", text: edit.summary });
+      header.createDiv({ cls: "deepseek-rag-edit-summary", text: `${edit.kind === "patch" ? "Patch" : "Full edit"}: ${edit.summary}` });
 
       const diffEl = editEl.createDiv({ cls: "deepseek-rag-diff" });
-      for (const line of buildLineDiff(edit.originalContent, edit.newContent).slice(0, 240)) {
+      const diff = buildEditDiff(edit);
+      for (const line of diff.slice(0, 240)) {
         diffEl.createDiv({
           cls: `deepseek-rag-diff-line deepseek-rag-diff-${line.type}`,
           text: `${line.prefix} ${line.text}`,
         });
       }
 
-      const diffLineCount = buildLineDiff(edit.originalContent, edit.newContent).length;
-      if (diffLineCount > 240) {
-        diffEl.createDiv({ cls: "deepseek-rag-diff-line", text: `[${diffLineCount - 240} more diff lines hidden]` });
+      if (diff.length > 240) {
+        diffEl.createDiv({ cls: "deepseek-rag-diff-line", text: `[${diff.length - 240} more diff lines hidden]` });
       }
 
       const actions = editEl.createDiv({ cls: "deepseek-rag-edit-actions" });
@@ -247,6 +247,14 @@ export class ChatView extends ItemView {
 }
 
 type DiffLine = { type: "same" | "add" | "remove"; prefix: string; text: string };
+
+function buildEditDiff(edit: PendingEdit): DiffLine[] {
+  if (edit.kind === "patch" && typeof edit.find === "string" && typeof edit.replace === "string") {
+    return buildLineDiff(edit.find, edit.replace);
+  }
+
+  return buildLineDiff(edit.originalContent, edit.newContent);
+}
 
 function buildLineDiff(oldContent: string, newContent: string): DiffLine[] {
   const oldLines = oldContent.split("\n");

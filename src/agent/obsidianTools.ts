@@ -27,9 +27,11 @@ export class ObsidianAgentTools {
         return { content: this.indexStore.getVaultOverview(40) };
       case "proposeEdit":
         return this.proposeEdit(args);
+      case "proposePatch":
+        return this.proposePatch(args);
       default:
         return {
-          content: `Unknown tool: ${toolName}. Available tools: searchNotes, openNote, listFolder, getLinks, getVaultOverview, proposeEdit.`,
+          content: `Unknown tool: ${toolName}. Available tools: searchNotes, openNote, listFolder, getLinks, getVaultOverview, proposePatch, proposeEdit.`,
         };
     }
   }
@@ -41,6 +43,18 @@ export class ObsidianAgentTools {
     }
 
     const currentContent = await this.app.vault.cachedRead(file);
+    if (edit.kind === "patch") {
+      if (!edit.find || typeof edit.replace !== "string") {
+        throw new Error(`Patch data is incomplete: ${edit.path}`);
+      }
+      const matchCount = countOccurrences(currentContent, edit.find);
+      if (matchCount !== 1) {
+        throw new Error(`Patch no longer applies cleanly to ${edit.path}; find text matched ${matchCount} times.`);
+      }
+      await this.app.vault.modify(file, currentContent.replace(edit.find, edit.replace));
+      return;
+    }
+
     if (currentContent !== edit.originalContent) {
       throw new Error(`File changed since the edit was proposed: ${edit.path}`);
     }
@@ -188,6 +202,7 @@ export class ObsidianAgentTools {
     const pendingEdit: PendingEdit = {
       id: `${file.path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
       path: file.path,
+      kind: "full",
       summary,
       originalContent,
       newContent,
@@ -200,6 +215,64 @@ export class ObsidianAgentTools {
         `Prepared a pending edit for ${file.path}.`,
         `Summary: ${summary}`,
         "The edit has not been applied. The user must review and apply it.",
+      ].join("\n"),
+    };
+  }
+
+  private async proposePatch(args: Record<string, unknown>): Promise<AgentToolExecution> {
+    const path = getStringArg(args, "path");
+    const find = getStringArg(args, "find");
+    const replace = getStringArg(args, "replace");
+    const summary = getStringArg(args, "summary") ?? "Proposed patch";
+    if (!path) {
+      return { content: "Missing required argument: path." };
+    }
+    if (typeof find !== "string" || find.length === 0) {
+      return { content: "Missing required argument: find." };
+    }
+    if (typeof replace !== "string") {
+      return { content: "Missing required argument: replace." };
+    }
+
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) {
+      return { content: `File not found: ${path}` };
+    }
+    if (!READABLE_EXTENSIONS.has(file.extension)) {
+      return { content: `Cannot propose text patches for metadata-only file: ${path}` };
+    }
+
+    const originalContent = await this.app.vault.cachedRead(file);
+    const matchCount = countOccurrences(originalContent, find);
+    if (matchCount !== 1) {
+      return {
+        content: [
+          `Patch rejected for ${file.path}.`,
+          `The find text matched ${matchCount} times; it must match exactly once.`,
+          "Open the file and propose a more specific find block.",
+        ].join("\n"),
+      };
+    }
+
+    const newContent = originalContent.replace(find, replace);
+    const pendingEdit: PendingEdit = {
+      id: `${file.path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      path: file.path,
+      kind: "patch",
+      summary,
+      originalContent,
+      newContent,
+      find,
+      replace,
+      createdAt: Date.now(),
+    };
+
+    return {
+      pendingEdit,
+      content: [
+        `Prepared a pending patch for ${file.path}.`,
+        `Summary: ${summary}`,
+        "The patch has not been applied. The user must review and apply it.",
       ].join("\n"),
     };
   }
@@ -221,4 +294,18 @@ function clip(content: string, maxChars: number): string {
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function countOccurrences(content: string, needle: string): number {
+  let count = 0;
+  let index = 0;
+  while (index <= content.length) {
+    const found = content.indexOf(needle, index);
+    if (found === -1) {
+      break;
+    }
+    count += 1;
+    index = found + needle.length;
+  }
+  return count;
 }

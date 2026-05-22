@@ -1,5 +1,5 @@
 {
-  "name": "obsidian-ai-assistant",
+  "name": "vault-chat-assistant",
   "version": "0.1.5",
   "description": "AI assistant plugin for Obsidian vault chat, search, and reviewed edits",
   "main": "main.js",
@@ -15,7 +15,7 @@
     "assistant",
     "vault"
   ],
-  "author": "",
+  "author": "Evgenii Bykovskikh",
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.11.30",

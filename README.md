@@ -23,7 +23,7 @@ npm run build
 Then copy the contents of `dist/` into:
 
 ```text
-<vault>/.obsidian/plugins/obsidian-ai-assistant/
+<vault>/.obsidian/plugins/vault-chat-assistant/
 ```
 
 Enable the plugin in Obsidian community plugin settings, then configure an OpenAI-compatible provider in the plugin settings.

@@ -25,7 +25,7 @@ export class ObsidianAIAssistantSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h2", { text: "Obsidian AI Assistant" });
+    containerEl.createEl("h2", { text: "Vault Chat Assistant" });
 
     new Setting(containerEl)
       .setName("Provider preset")

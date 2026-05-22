@@ -1,4 +1,4 @@
-# Obsidian AI Assistant
+# Vault Chat Assistant
 
 AI assistant plugin for working with your Obsidian vault.
 

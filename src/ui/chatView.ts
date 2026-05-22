@@ -46,7 +46,7 @@ export class ChatView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Obsidian AI Assistant";
+    return "Vault Chat Assistant";
   }
 
   getIcon(): string {
@@ -60,7 +60,7 @@ export class ChatView extends ItemView {
 
   startAgentTask(content: string): void {
     if (this.isSending) {
-      new Notice("Obsidian AI Assistant is already working.", 3000);
+      new Notice("Vault Chat Assistant is already working.", 3000);
       return;
     }
 

@@ -20,7 +20,7 @@ export async function indexVaultFiles(
   indexStore: IndexStore,
 ): Promise<VaultIndexResult> {
   const files = vault.getFiles();
-  const notice = new Notice(`Obsidian AI Assistant: indexing 0/${files.length} files...`, 0);
+  const notice = new Notice(`Vault Chat Assistant: indexing 0/${files.length} files...`, 0);
   indexStore.clear();
 
   try {
@@ -29,12 +29,12 @@ export async function indexVaultFiles(
 
       const done = index + 1;
       if (done === files.length || done % 10 === 0) {
-        notice.setMessage(`Obsidian AI Assistant: indexing ${done}/${files.length} files...`);
+        notice.setMessage(`Vault Chat Assistant: indexing ${done}/${files.length} files...`);
       }
     }
 
     const coverage = indexStore.getCoverage();
-    notice.setMessage(`Obsidian AI Assistant: indexed ${coverage.indexedFiles}/${coverage.totalFiles} files.`);
+    notice.setMessage(`Vault Chat Assistant: indexed ${coverage.indexedFiles}/${coverage.totalFiles} files.`);
     window.setTimeout(() => notice.hide(), 3000);
     return {
       totalFiles: coverage.totalFiles,

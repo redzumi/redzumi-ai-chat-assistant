@@ -1,6 +1,6 @@
 {
   "id": "obsidian-ai-assistant",
-  "name": "Obsidian AI Assistant",
+  "name": "Vault Chat Assistant",
   "version": "0.1.0",
   "minAppVersion": "1.5.0",
   "description": "Chat with an AI assistant that can search your vault, inspect notes, and prepare edits for review.",

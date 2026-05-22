@@ -54,13 +54,13 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
         ),
     );
 
-    this.addRibbonIcon("message-square", "Open Obsidian AI Assistant", () => {
+    this.addRibbonIcon("message-square", "Open Vault Chat Assistant", () => {
       void this.activateView();
     });
 
     this.addCommand({
       id: "open-obsidian-ai-assistant-chat",
-      name: "Open Obsidian AI Assistant chat",
+      name: "Open Vault Chat Assistant chat",
       callback: () => {
         void this.activateView();
       },
@@ -68,7 +68,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     this.addCommand({
       id: "reindex-obsidian-ai-assistant",
-      name: "Re-index vault for Obsidian AI Assistant",
+      name: "Re-index vault for Vault Chat Assistant",
       callback: () => {
         void this.indexVault();
       },
@@ -76,7 +76,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     this.addCommand({
       id: "summarize-current-note-obsidian-ai-assistant",
-      name: "Obsidian AI Assistant: summarize current note",
+      name: "Vault Chat Assistant: summarize current note",
       callback: () => {
         void this.runCurrentNoteTask("summarize");
       },
@@ -84,7 +84,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     this.addCommand({
       id: "review-current-note-obsidian-ai-assistant",
-      name: "Obsidian AI Assistant: review current note",
+      name: "Vault Chat Assistant: review current note",
       callback: () => {
         void this.runCurrentNoteTask("review");
       },
@@ -92,7 +92,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     this.addCommand({
       id: "extract-tasks-current-note-obsidian-ai-assistant",
-      name: "Obsidian AI Assistant: extract tasks from current note",
+      name: "Vault Chat Assistant: extract tasks from current note",
       callback: () => {
         void this.runCurrentNoteTask("tasks");
       },
@@ -100,7 +100,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     this.addCommand({
       id: "improve-current-note-obsidian-ai-assistant",
-      name: "Obsidian AI Assistant: propose improvements to current note",
+      name: "Vault Chat Assistant: propose improvements to current note",
       callback: () => {
         void this.runCurrentNoteTask("improve");
       },
@@ -111,8 +111,8 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     if (this.indexStore.getAllChunks().length === 0) {
       void this.indexVault().catch((error) => {
-        console.error("Obsidian AI Assistant initial indexing failed", error);
-        new Notice("Obsidian AI Assistant: initial indexing failed. See console for details.", 6000);
+        console.error("Vault Chat Assistant initial indexing failed", error);
+        new Notice("Vault Chat Assistant: initial indexing failed. See console for details.", 6000);
       });
     }
   }
@@ -140,7 +140,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
     const indexed = await indexVaultFiles(this.app.vault, this.app.metadataCache, this.chunker, this.indexStore);
     this.searchEngine.setChunks(this.indexStore.getAllChunks());
     await this.savePluginData();
-    new Notice(`Obsidian AI Assistant: indexed ${indexed.indexedFiles}/${indexed.totalFiles} files.`, 3000);
+    new Notice(`Vault Chat Assistant: indexed ${indexed.indexedFiles}/${indexed.totalFiles} files.`, 3000);
   }
 
   configureRealtimeIndexer(): void {
@@ -183,7 +183,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
     if (!leaf) {
       leaf = this.app.workspace.getRightLeaf(false);
       if (!leaf) {
-        new Notice("Obsidian AI Assistant: could not open chat pane.", 4000);
+        new Notice("Vault Chat Assistant: could not open chat pane.", 4000);
         return null;
       }
       await leaf.setViewState({ type: CHAT_VIEW_TYPE, active: true });
@@ -196,7 +196,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
   private async runCurrentNoteTask(task: "summarize" | "review" | "tasks" | "improve"): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
-      new Notice("Obsidian AI Assistant: no active note.", 3000);
+      new Notice("Vault Chat Assistant: no active note.", 3000);
       return;
     }
 

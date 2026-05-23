@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -31,8 +33,13 @@ jobs:
 
       - run: yarn build
 
-      - name: Package
-        run: cd dist && zip ../obsidian-ai-assistant-${{ inputs.tag || github.ref_name }}.zip main.js manifest.json styles.css
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/main.js
+            dist/manifest.json
+            dist/styles.css
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -43,4 +50,3 @@ jobs:
             dist/main.js
             dist/manifest.json
             dist/styles.css
-            obsidian-ai-assistant-${{ inputs.tag || github.ref_name }}.zip

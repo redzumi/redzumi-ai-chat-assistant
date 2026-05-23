@@ -78,7 +78,7 @@ export interface WorkingSetItem {
 export interface PendingEdit {
   id: string;
   path: string;
-  kind: "full" | "patch";
+  kind: "create" | "full" | "patch";
   summary: string;
   originalContent: string;
   newContent: string;

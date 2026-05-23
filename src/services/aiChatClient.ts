@@ -22,7 +22,7 @@ export class AIChatClient {
     const workingSet = new Map<string, WorkingSetItem>();
 
     for (let step = 0; step < 5; step += 1) {
-      const content = await this.requestCompletion(messages, 4000);
+      const content = await this.requestCompletion(messages, 8000);
       const action = parseAgentAction(content);
 
       if (action.final) {
@@ -30,6 +30,21 @@ export class AIChatClient {
       }
 
       if (!action.tool) {
+        if (action.malformedJson || action.unsupportedJson) {
+          messages.push({ role: "assistant", content });
+          messages.push({
+            role: "user",
+            content: [
+              "Your previous response was not a valid action.",
+              action.malformedJson ? "It looked like malformed or truncated JSON." : "It was valid JSON, but it did not contain a supported tool or final field.",
+              "Return exactly one supported JSON object.",
+              intent === "edit"
+                ? "For creating a new note, use {\"tool\":\"proposeNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"...\",\"content\":\"...\"}}."
+                : "In Ask mode, answer with {\"final\":\"...\"} and do not prepare edits.",
+            ].join("\n"),
+          });
+          continue;
+        }
         return { answer: content.trim(), sources: Array.from(sources.values()), pendingEdits, workingSet: Array.from(workingSet.values()) };
       }
 
@@ -135,6 +150,7 @@ export class AIChatClient {
     const editTools =
       intent === "edit"
         ? [
+            "- proposeNewNote: args {\"path\":\"folder/name.md\",\"summary\":\"...\",\"content\":\"full note content\"}. Prepare a pending new note for user review.",
             "- proposePatch: args {\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}. Prepare a small pending patch for user review.",
             "- proposePatchBatch: args {\"summary\":\"...\",\"patches\":[{\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}]}. Prepare multiple pending patches for user review.",
             "- proposeEdit: args {\"path\":\"...\",\"summary\":\"...\",\"newContent\":\"full replacement file content\"}. Prepare a pending edit for user review.",
@@ -143,7 +159,8 @@ export class AIChatClient {
     const editPolicy =
       intent === "edit"
         ? [
-            "You may propose file edits only with proposePatch, proposePatchBatch, or proposeEdit.",
+            "You may propose file creation or edits only with proposeNewNote, proposePatch, proposePatchBatch, or proposeEdit.",
+            "Use proposeNewNote when the user asks to create a new note or file.",
             "Prefer proposePatch for one normal edit and proposePatchBatch for multiple normal edits. Use proposeEdit only when the user asks to rewrite a full file or the patch would be larger than the original file.",
             "Before proposePatch, proposePatchBatch, or proposeEdit, open each target file unless the exact current content is already available in the conversation.",
             "For proposePatch and proposePatchBatch, every find must be an exact substring from the current file and specific enough to match once.",
@@ -176,6 +193,7 @@ export class AIChatClient {
       "",
       "Respond with exactly one JSON object and no markdown.",
       "To call a tool: {\"tool\":\"searchNotes\",\"args\":{\"query\":\"project plan\",\"topK\":6},\"reason\":\"...\"}",
+      intent === "edit" ? "To create a note: {\"tool\":\"proposeNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"Create note\",\"content\":\"# Title\\n...\"},\"reason\":\"...\"}" : "",
       "To answer finally: {\"final\":\"Your answer with cited file paths and mention any pending edits.\"}",
       "",
       "VAULT INDEX OVERVIEW:",
@@ -186,7 +204,7 @@ export class AIChatClient {
 }
 
 const READ_ONLY_TOOLS = new Set(["searchNotes", "getCurrentNote", "openCurrentNote", "openNote", "listFolder", "getLinks", "getVaultOverview"]);
-const EDIT_TOOLS = new Set(["proposePatch", "proposePatchBatch", "proposeEdit"]);
+const EDIT_TOOLS = new Set(["proposeNewNote", "proposePatch", "proposePatchBatch", "proposeEdit"]);
 
 function isToolAllowed(toolName: string, intent: ChatIntent): boolean {
   if (READ_ONLY_TOOLS.has(toolName)) {
@@ -199,23 +217,26 @@ interface AgentAction {
   tool?: string;
   args?: Record<string, unknown>;
   final?: string;
+  malformedJson?: boolean;
+  unsupportedJson?: boolean;
 }
 
 function parseAgentAction(content: string): AgentAction {
   const jsonText = extractJsonObject(content);
   if (!jsonText) {
-    return {};
+    return looksLikeJson(content) ? { malformedJson: true } : {};
   }
 
   try {
     const parsed = JSON.parse(jsonText) as AgentAction;
-    return {
+    const action = {
       tool: typeof parsed.tool === "string" ? parsed.tool : undefined,
       args: isRecord(parsed.args) ? parsed.args : undefined,
       final: typeof parsed.final === "string" ? parsed.final : undefined,
     };
+    return action.tool || action.final ? action : { unsupportedJson: true };
   } catch {
-    return {};
+    return { malformedJson: true };
   }
 }
 
@@ -228,6 +249,11 @@ function extractJsonObject(content: string): string | null {
   const start = content.indexOf("{");
   const end = content.lastIndexOf("}");
   return start >= 0 && end > start ? content.slice(start, end + 1) : null;
+}
+
+function looksLikeJson(content: string): boolean {
+  const trimmed = content.trim();
+  return trimmed.startsWith("{") || trimmed.startsWith("```json") || trimmed.startsWith("```");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

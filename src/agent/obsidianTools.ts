@@ -29,6 +29,8 @@ export class ObsidianAgentTools {
         return this.getLinks(args);
       case "getVaultOverview":
         return { content: this.indexStore.getVaultOverview(40) };
+      case "proposeNewNote":
+        return this.proposeNewNote(args);
       case "proposeEdit":
         return this.proposeEdit(args);
       case "proposePatch":
@@ -37,13 +39,21 @@ export class ObsidianAgentTools {
         return this.proposePatchBatch(args);
       default:
         return {
-          content: `Unknown tool: ${toolName}. Available tools: searchNotes, getCurrentNote, openCurrentNote, openNote, listFolder, getLinks, getVaultOverview, proposePatch, proposePatchBatch, proposeEdit.`,
+          content: `Unknown tool: ${toolName}. Available tools: searchNotes, getCurrentNote, openCurrentNote, openNote, listFolder, getLinks, getVaultOverview, proposeNewNote, proposePatch, proposePatchBatch, proposeEdit.`,
         };
     }
   }
 
   async applyEdit(edit: PendingEdit): Promise<void> {
     const file = this.app.vault.getAbstractFileByPath(edit.path);
+    if (edit.kind === "create") {
+      if (file) {
+        throw new Error(`File already exists: ${edit.path}`);
+      }
+      await this.app.vault.create(edit.path, edit.newContent);
+      return;
+    }
+
     if (!(file instanceof TFile)) {
       throw new Error(`File not found: ${edit.path}`);
     }
@@ -66,6 +76,45 @@ export class ObsidianAgentTools {
     }
 
     await this.app.vault.modify(file, edit.newContent);
+  }
+
+  private proposeNewNote(args: Record<string, unknown>): AgentToolExecution {
+    const path = getStringArg(args, "path");
+    const content = getStringArg(args, "content");
+    const summary = getStringArg(args, "summary") ?? "Create note";
+    if (!path) {
+      return { content: "Missing required argument: path." };
+    }
+    if (typeof content !== "string") {
+      return { content: "Missing required argument: content." };
+    }
+    const notePath = normalizeNewNotePath(path);
+    if (!READABLE_EXTENSIONS.has(pathExtension(notePath))) {
+      return { content: `Cannot create metadata-only file as a text note: ${notePath}` };
+    }
+    if (this.app.vault.getAbstractFileByPath(notePath)) {
+      return { content: `Cannot create note because a file or folder already exists at: ${notePath}` };
+    }
+
+    const pendingEdit: PendingEdit = {
+      id: `${notePath}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      path: notePath,
+      kind: "create",
+      summary,
+      originalContent: "",
+      newContent: content,
+      createdAt: Date.now(),
+    };
+
+    return {
+      pendingEdit,
+      workingSetItems: [{ path: notePath, role: "edited", detail: summary }],
+      content: [
+        `Prepared a pending new note for ${notePath}.`,
+        `Summary: ${summary}`,
+        "The note has not been created. The user must review and apply it.",
+      ].join("\n"),
+    };
   }
 
   private searchNotes(args: Record<string, unknown>): AgentToolExecution {
@@ -376,6 +425,18 @@ function getStringArg(args: Record<string, unknown>, name: string): string | und
 function getNumberArg(args: Record<string, unknown>, name: string): number | undefined {
   const value = args[name];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function pathExtension(path: string): string {
+  const lastPart = path.split("/").pop() ?? "";
+  const dotIndex = lastPart.lastIndexOf(".");
+  return dotIndex >= 0 ? lastPart.slice(dotIndex + 1).toLowerCase() : "md";
+}
+
+function normalizeNewNotePath(path: string): string {
+  const normalized = path.replace(/^\/+/, "").replace(/\/+$/, "").trim();
+  const lastPart = normalized.split("/").pop() ?? "";
+  return lastPart.includes(".") ? normalized : `${normalized}.md`;
 }
 
 function clip(content: string, maxChars: number): string {

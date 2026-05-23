@@ -195,7 +195,7 @@ export class ChatView extends ItemView {
       const editEl = body.createDiv({ cls: "vault-ai-assistant-edit" });
       const header = editEl.createDiv({ cls: "vault-ai-assistant-edit-header" });
       header.createDiv({ cls: "vault-ai-assistant-edit-title", text: edit.path });
-      header.createDiv({ cls: "vault-ai-assistant-edit-summary", text: `${edit.kind === "patch" ? "Patch" : "Full edit"}: ${edit.summary}` });
+      header.createDiv({ cls: "vault-ai-assistant-edit-summary", text: `${editKindLabel(edit)}: ${edit.summary}` });
 
       const diffEl = editEl.createDiv({ cls: "vault-ai-assistant-diff" });
       const diff = buildEditDiff(edit);
@@ -334,7 +334,7 @@ export class ChatView extends ItemView {
       await this.agentTools.applyEdit(edit);
       this.pendingEdits = this.pendingEdits.filter((pending) => pending.id !== edit.id);
       this.workingSet = mergeWorkingSet(this.workingSet, [{ path: edit.path, role: "edited", detail: `Applied: ${edit.summary}` }]);
-      new Notice(`Applied edit: ${edit.path}`, 3000);
+      new Notice(`${edit.kind === "create" ? "Created note" : "Applied edit"}: ${edit.path}`, 3000);
       this.render();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -386,6 +386,13 @@ function buildEditDiff(edit: PendingEdit): DiffLine[] {
   }
 
   return buildLineDiff(edit.originalContent, edit.newContent);
+}
+
+function editKindLabel(edit: PendingEdit): string {
+  if (edit.kind === "create") {
+    return "New note";
+  }
+  return edit.kind === "patch" ? "Patch" : "Full edit";
 }
 
 function buildLineDiff(oldContent: string, newContent: string): DiffLine[] {

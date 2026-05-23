@@ -39,7 +39,7 @@ export class AIChatClient {
               action.malformedJson ? "It looked like malformed or truncated JSON." : "It was valid JSON, but it did not contain a supported tool or final field.",
               "Return exactly one supported JSON object.",
               intent === "edit"
-                ? "For creating a new note, use {\"tool\":\"proposeNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"...\",\"content\":\"...\"}}."
+                ? "For long new notes, use beginNewNote, appendNewNote in chunks, then finishNewNote. For short new notes, use proposeNewNote."
                 : "In Ask mode, answer with {\"final\":\"...\"} and do not prepare edits.",
             ].join("\n"),
           });
@@ -150,6 +150,9 @@ export class AIChatClient {
     const editTools =
       intent === "edit"
         ? [
+            "- beginNewNote: args {\"path\":\"folder/name.md\",\"summary\":\"...\"}. Start a pending new note draft for long content.",
+            "- appendNewNote: args {\"draftId\":\"...\",\"content\":\"markdown chunk\"}. Append one content chunk to a draft.",
+            "- finishNewNote: args {\"draftId\":\"...\"}. Convert a completed draft into a pending new note for user review.",
             "- proposeNewNote: args {\"path\":\"folder/name.md\",\"summary\":\"...\",\"content\":\"full note content\"}. Prepare a pending new note for user review.",
             "- proposePatch: args {\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}. Prepare a small pending patch for user review.",
             "- proposePatchBatch: args {\"summary\":\"...\",\"patches\":[{\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}]}. Prepare multiple pending patches for user review.",
@@ -159,8 +162,9 @@ export class AIChatClient {
     const editPolicy =
       intent === "edit"
         ? [
-            "You may propose file creation or edits only with proposeNewNote, proposePatch, proposePatchBatch, or proposeEdit.",
-            "Use proposeNewNote when the user asks to create a new note or file.",
+            "You may propose file creation or edits only with beginNewNote, appendNewNote, finishNewNote, proposeNewNote, proposePatch, proposePatchBatch, or proposeEdit.",
+            "For long new notes, use beginNewNote, then appendNewNote with chunks under 2000 characters each, then finishNewNote.",
+            "Use proposeNewNote only for short new notes.",
             "Prefer proposePatch for one normal edit and proposePatchBatch for multiple normal edits. Use proposeEdit only when the user asks to rewrite a full file or the patch would be larger than the original file.",
             "Before proposePatch, proposePatchBatch, or proposeEdit, open each target file unless the exact current content is already available in the conversation.",
             "For proposePatch and proposePatchBatch, every find must be an exact substring from the current file and specific enough to match once.",
@@ -193,7 +197,8 @@ export class AIChatClient {
       "",
       "Respond with exactly one JSON object and no markdown.",
       "To call a tool: {\"tool\":\"searchNotes\",\"args\":{\"query\":\"project plan\",\"topK\":6},\"reason\":\"...\"}",
-      intent === "edit" ? "To create a note: {\"tool\":\"proposeNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"Create note\",\"content\":\"# Title\\n...\"},\"reason\":\"...\"}" : "",
+      intent === "edit" ? "To create a long note: first {\"tool\":\"beginNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"Create note\"},\"reason\":\"...\"}; then append chunks; then finish the draft." : "",
+      intent === "edit" ? "To create a short note: {\"tool\":\"proposeNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"Create note\",\"content\":\"# Title\\n...\"},\"reason\":\"...\"}" : "",
       "To answer finally: {\"final\":\"Your answer with cited file paths and mention any pending edits.\"}",
       "",
       "VAULT INDEX OVERVIEW:",
@@ -204,7 +209,7 @@ export class AIChatClient {
 }
 
 const READ_ONLY_TOOLS = new Set(["searchNotes", "getCurrentNote", "openCurrentNote", "openNote", "listFolder", "getLinks", "getVaultOverview"]);
-const EDIT_TOOLS = new Set(["proposeNewNote", "proposePatch", "proposePatchBatch", "proposeEdit"]);
+const EDIT_TOOLS = new Set(["beginNewNote", "appendNewNote", "finishNewNote", "proposeNewNote", "proposePatch", "proposePatchBatch", "proposeEdit"]);
 
 function isToolAllowed(toolName: string, intent: ChatIntent): boolean {
   if (READ_ONLY_TOOLS.has(toolName)) {

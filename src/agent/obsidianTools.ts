@@ -5,7 +5,16 @@ import { GraphSearchEngine } from "../search/graphSearch";
 
 const READABLE_EXTENSIONS = new Set(["md", "txt", "csv", "json", "canvas"]);
 
+interface NewNoteDraft {
+  path: string;
+  summary: string;
+  chunks: string[];
+  createdAt: number;
+}
+
 export class ObsidianAgentTools {
+  private readonly newNoteDrafts = new Map<string, NewNoteDraft>();
+
   constructor(
     private readonly app: App,
     private readonly indexStore: IndexStore,
@@ -29,6 +38,12 @@ export class ObsidianAgentTools {
         return this.getLinks(args);
       case "getVaultOverview":
         return { content: this.indexStore.getVaultOverview(40) };
+      case "beginNewNote":
+        return this.beginNewNote(args);
+      case "appendNewNote":
+        return this.appendNewNote(args);
+      case "finishNewNote":
+        return this.finishNewNote(args);
       case "proposeNewNote":
         return this.proposeNewNote(args);
       case "proposeEdit":
@@ -39,7 +54,7 @@ export class ObsidianAgentTools {
         return this.proposePatchBatch(args);
       default:
         return {
-          content: `Unknown tool: ${toolName}. Available tools: searchNotes, getCurrentNote, openCurrentNote, openNote, listFolder, getLinks, getVaultOverview, proposeNewNote, proposePatch, proposePatchBatch, proposeEdit.`,
+          content: `Unknown tool: ${toolName}. Available tools: searchNotes, getCurrentNote, openCurrentNote, openNote, listFolder, getLinks, getVaultOverview, beginNewNote, appendNewNote, finishNewNote, proposeNewNote, proposePatch, proposePatchBatch, proposeEdit.`,
         };
     }
   }
@@ -78,6 +93,93 @@ export class ObsidianAgentTools {
     await this.app.vault.modify(file, edit.newContent);
   }
 
+  private beginNewNote(args: Record<string, unknown>): AgentToolExecution {
+    const path = getStringArg(args, "path");
+    const summary = getStringArg(args, "summary") ?? "Create note";
+    if (!path) {
+      return { content: "Missing required argument: path." };
+    }
+
+    const notePath = normalizeNewNotePath(path);
+    const error = validateNewNotePath(this.app, notePath);
+    if (error) {
+      return { content: error };
+    }
+
+    const draftId = `${notePath}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    this.newNoteDrafts.set(draftId, {
+      path: notePath,
+      summary,
+      chunks: [],
+      createdAt: Date.now(),
+    });
+
+    return {
+      workingSetItems: [{ path: notePath, role: "edited", detail: summary }],
+      content: [
+        `Started pending new note draft ${draftId}.`,
+        `Path: ${notePath}`,
+        `Summary: ${summary}`,
+        "Append content with appendNewNote using this draftId. Finish with finishNewNote when all content has been appended.",
+      ].join("\n"),
+    };
+  }
+
+  private appendNewNote(args: Record<string, unknown>): AgentToolExecution {
+    const draftId = getStringArg(args, "draftId");
+    const content = getStringArg(args, "content");
+    if (!draftId) {
+      return { content: "Missing required argument: draftId." };
+    }
+    if (typeof content !== "string") {
+      return { content: "Missing required argument: content." };
+    }
+
+    const draft = this.newNoteDrafts.get(draftId);
+    if (!draft) {
+      return { content: `New note draft not found: ${draftId}` };
+    }
+
+    draft.chunks.push(content);
+    return {
+      workingSetItems: [{ path: draft.path, role: "edited", detail: `Appended draft chunk ${draft.chunks.length}` }],
+      content: [`Appended chunk ${draft.chunks.length} to ${draft.path}.`, `Current draft length: ${draft.chunks.join("").length} characters.`].join("\n"),
+    };
+  }
+
+  private finishNewNote(args: Record<string, unknown>): AgentToolExecution {
+    const draftId = getStringArg(args, "draftId");
+    if (!draftId) {
+      return { content: "Missing required argument: draftId." };
+    }
+
+    const draft = this.newNoteDrafts.get(draftId);
+    if (!draft) {
+      return { content: `New note draft not found: ${draftId}` };
+    }
+    if (draft.chunks.length === 0) {
+      return { content: `New note draft has no content: ${draftId}` };
+    }
+
+    const error = validateNewNotePath(this.app, draft.path);
+    if (error) {
+      return { content: error };
+    }
+
+    this.newNoteDrafts.delete(draftId);
+    const pendingEdit = createNewNoteEdit(draft.path, draft.summary, draft.chunks.join(""));
+    return {
+      pendingEdit,
+      workingSetItems: [{ path: draft.path, role: "edited", detail: draft.summary }],
+      content: [
+        `Prepared a pending new note for ${draft.path}.`,
+        `Summary: ${draft.summary}`,
+        `Content chunks: ${draft.chunks.length}`,
+        "The note has not been created. The user must review and apply it.",
+      ].join("\n"),
+    };
+  }
+
   private proposeNewNote(args: Record<string, unknown>): AgentToolExecution {
     const path = getStringArg(args, "path");
     const content = getStringArg(args, "content");
@@ -89,23 +191,12 @@ export class ObsidianAgentTools {
       return { content: "Missing required argument: content." };
     }
     const notePath = normalizeNewNotePath(path);
-    if (!READABLE_EXTENSIONS.has(pathExtension(notePath))) {
-      return { content: `Cannot create metadata-only file as a text note: ${notePath}` };
-    }
-    if (this.app.vault.getAbstractFileByPath(notePath)) {
-      return { content: `Cannot create note because a file or folder already exists at: ${notePath}` };
+    const error = validateNewNotePath(this.app, notePath);
+    if (error) {
+      return { content: error };
     }
 
-    const pendingEdit: PendingEdit = {
-      id: `${notePath}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
-      path: notePath,
-      kind: "create",
-      summary,
-      originalContent: "",
-      newContent: content,
-      createdAt: Date.now(),
-    };
-
+    const pendingEdit = createNewNoteEdit(notePath, summary, content);
     return {
       pendingEdit,
       workingSetItems: [{ path: notePath, role: "edited", detail: summary }],
@@ -437,6 +528,28 @@ function normalizeNewNotePath(path: string): string {
   const normalized = path.replace(/^\/+/, "").replace(/\/+$/, "").trim();
   const lastPart = normalized.split("/").pop() ?? "";
   return lastPart.includes(".") ? normalized : `${normalized}.md`;
+}
+
+function validateNewNotePath(app: App, path: string): string | null {
+  if (!READABLE_EXTENSIONS.has(pathExtension(path))) {
+    return `Cannot create metadata-only file as a text note: ${path}`;
+  }
+  if (app.vault.getAbstractFileByPath(path)) {
+    return `Cannot create note because a file or folder already exists at: ${path}`;
+  }
+  return null;
+}
+
+function createNewNoteEdit(path: string, summary: string, content: string): PendingEdit {
+  return {
+    id: `${path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    path,
+    kind: "create",
+    summary,
+    originalContent: "",
+    newContent: content,
+    createdAt: Date.now(),
+  };
 }
 
 function clip(content: string, maxChars: number): string {

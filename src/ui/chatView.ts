@@ -2,7 +2,7 @@ import { ItemView, MarkdownRenderer, Notice, setIcon, WorkspaceLeaf } from "obsi
 import { AgentToolExecutor, ChatIntent, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
 import { AIChatClient } from "../services/aiChatClient";
 
-export const CHAT_VIEW_TYPE = "vault-ai-assistant-chat-view";
+export const CHAT_VIEW_TYPE = "vault-chat-agent-chat-view";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -41,7 +41,7 @@ export class ChatView extends ItemView {
   }
 
   getDisplayText(): string {
-    return "Vault AI Assistant";
+    return "Vault Chat Agent";
   }
 
   getIcon(): string {
@@ -49,13 +49,13 @@ export class ChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
-    this.containerEl.addClass("vault-ai-assistant-view");
+    this.containerEl.addClass("vault-chat-agent-view");
     this.render();
   }
 
   startTask(content: string, intent: ChatIntent): void {
     if (this.isSending) {
-      new Notice("Vault AI Assistant is already working.", 3000);
+      new Notice("Vault Chat Agent is already working.", 3000);
       return;
     }
 
@@ -66,7 +66,7 @@ export class ChatView extends ItemView {
   private render(): void {
     this.containerEl.empty();
 
-    const toolbar = this.containerEl.createDiv({ cls: "vault-ai-assistant-toolbar" });
+    const toolbar = this.containerEl.createDiv({ cls: "vault-chat-agent-toolbar" });
     this.renderIntentControl(toolbar);
 
     const clearButton = toolbar.createEl("button", { attr: { "aria-label": "Clear chat" } });
@@ -79,7 +79,7 @@ export class ChatView extends ItemView {
       this.render();
     });
 
-    const messagesEl = this.containerEl.createDiv({ cls: "vault-ai-assistant-messages" });
+    const messagesEl = this.containerEl.createDiv({ cls: "vault-chat-agent-messages" });
     if (this.messages.length === 0) {
       messagesEl.createEl("div", {
         cls: "setting-item-description",
@@ -92,7 +92,7 @@ export class ChatView extends ItemView {
     }
 
     if (this.isSending) {
-      messagesEl.createDiv({ cls: "vault-ai-assistant-status", text: this.statusText || "Working..." });
+      messagesEl.createDiv({ cls: "vault-chat-agent-status", text: this.statusText || "Working..." });
     }
 
     if (this.pendingEdits.length > 0) {
@@ -112,7 +112,7 @@ export class ChatView extends ItemView {
   }
 
   private renderIntentControl(toolbar: HTMLElement): void {
-    const intentControl = toolbar.createDiv({ cls: "vault-ai-assistant-intent-control", attr: { "aria-label": "Chat intent" } });
+    const intentControl = toolbar.createDiv({ cls: "vault-chat-agent-intent-control", attr: { "aria-label": "Chat intent" } });
     const intents: Array<{ intent: ChatIntent; label: string; description: string }> = [
       { intent: "ask", label: "Ask", description: "Inspect the vault with read-only tools" },
       { intent: "edit", label: "Edit", description: "Prepare reviewed changes for approval" },
@@ -120,7 +120,7 @@ export class ChatView extends ItemView {
 
     for (const item of intents) {
       const button = intentControl.createEl("button", {
-        cls: `vault-ai-assistant-intent-button ${this.intent === item.intent ? "is-active" : ""}`,
+        cls: `vault-chat-agent-intent-button ${this.intent === item.intent ? "is-active" : ""}`,
         text: item.label,
         attr: { "aria-label": item.description },
       });
@@ -141,9 +141,9 @@ export class ChatView extends ItemView {
 
   private async renderMessage(parent: HTMLElement, message: ChatMessage): Promise<void> {
     const cls = [
-      "vault-ai-assistant-message",
-      message.role === "user" ? "vault-ai-assistant-message-user" : "vault-ai-assistant-message-assistant",
-      message.error ? "vault-ai-assistant-message-error" : "",
+      "vault-chat-agent-message",
+      message.role === "user" ? "vault-chat-agent-message-user" : "vault-chat-agent-message-assistant",
+      message.error ? "vault-chat-agent-message-error" : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -163,11 +163,11 @@ export class ChatView extends ItemView {
     }
 
     for (const result of this.lastSources) {
-      const sourceEl = body.createDiv({ cls: "vault-ai-assistant-source" });
-      const title = sourceEl.createDiv({ cls: "vault-ai-assistant-source-title" });
+      const sourceEl = body.createDiv({ cls: "vault-chat-agent-source" });
+      const title = sourceEl.createDiv({ cls: "vault-chat-agent-source-title" });
       title.setText(result.chunk.filePath);
       sourceEl.createDiv({
-        cls: "vault-ai-assistant-source-snippet",
+        cls: "vault-chat-agent-source-snippet",
         text: result.chunk.content.slice(0, 280),
       });
     }
@@ -179,7 +179,7 @@ export class ChatView extends ItemView {
       return;
     }
 
-    const batchActions = body.createDiv({ cls: "vault-ai-assistant-panel-actions" });
+    const batchActions = body.createDiv({ cls: "vault-chat-agent-panel-actions" });
     const applyAllButton = batchActions.createEl("button", { cls: "mod-cta", text: "Apply all" });
     const rejectAllButton = batchActions.createEl("button", { text: "Reject all" });
     applyAllButton.disabled = this.isSending;
@@ -192,25 +192,25 @@ export class ChatView extends ItemView {
     });
 
     for (const edit of this.pendingEdits) {
-      const editEl = body.createDiv({ cls: "vault-ai-assistant-edit" });
-      const header = editEl.createDiv({ cls: "vault-ai-assistant-edit-header" });
-      header.createDiv({ cls: "vault-ai-assistant-edit-title", text: edit.path });
-      header.createDiv({ cls: "vault-ai-assistant-edit-summary", text: `${editKindLabel(edit)}: ${edit.summary}` });
+      const editEl = body.createDiv({ cls: "vault-chat-agent-edit" });
+      const header = editEl.createDiv({ cls: "vault-chat-agent-edit-header" });
+      header.createDiv({ cls: "vault-chat-agent-edit-title", text: edit.path });
+      header.createDiv({ cls: "vault-chat-agent-edit-summary", text: `${editKindLabel(edit)}: ${edit.summary}` });
 
-      const diffEl = editEl.createDiv({ cls: "vault-ai-assistant-diff" });
+      const diffEl = editEl.createDiv({ cls: "vault-chat-agent-diff" });
       const diff = buildEditDiff(edit);
       for (const line of diff.slice(0, 240)) {
         diffEl.createDiv({
-          cls: `vault-ai-assistant-diff-line vault-ai-assistant-diff-${line.type}`,
+          cls: `vault-chat-agent-diff-line vault-chat-agent-diff-${line.type}`,
           text: `${line.prefix} ${line.text}`,
         });
       }
 
       if (diff.length > 240) {
-        diffEl.createDiv({ cls: "vault-ai-assistant-diff-line", text: `[${diff.length - 240} more diff lines hidden]` });
+        diffEl.createDiv({ cls: "vault-chat-agent-diff-line", text: `[${diff.length - 240} more diff lines hidden]` });
       }
 
-      const actions = editEl.createDiv({ cls: "vault-ai-assistant-edit-actions" });
+      const actions = editEl.createDiv({ cls: "vault-chat-agent-edit-actions" });
       const openButton = actions.createEl("button", { text: "Open" });
       const applyButton = actions.createEl("button", { cls: "mod-cta", text: "Apply" });
       const rejectButton = actions.createEl("button", { text: "Reject" });
@@ -236,10 +236,10 @@ export class ChatView extends ItemView {
     }
 
     for (const item of this.workingSet.slice(0, 80)) {
-      const itemEl = body.createDiv({ cls: "vault-ai-assistant-working-set-item" });
-      itemEl.createSpan({ cls: `vault-ai-assistant-working-set-role vault-ai-assistant-working-set-${item.role}`, text: item.role });
-      itemEl.createSpan({ cls: "vault-ai-assistant-working-set-path", text: item.path });
-      itemEl.createSpan({ cls: "vault-ai-assistant-working-set-detail", text: item.detail });
+      const itemEl = body.createDiv({ cls: "vault-chat-agent-working-set-item" });
+      itemEl.createSpan({ cls: `vault-chat-agent-working-set-role vault-chat-agent-working-set-${item.role}`, text: item.role });
+      itemEl.createSpan({ cls: "vault-chat-agent-working-set-path", text: item.path });
+      itemEl.createSpan({ cls: "vault-chat-agent-working-set-detail", text: item.detail });
     }
 
     if (this.workingSet.length > 80) {
@@ -248,9 +248,9 @@ export class ChatView extends ItemView {
   }
 
   private renderPanel(panelId: PanelId, title: string): HTMLElement | null {
-    const panelEl = this.containerEl.createDiv({ cls: "vault-ai-assistant-panel" });
+    const panelEl = this.containerEl.createDiv({ cls: "vault-chat-agent-panel" });
     const header = panelEl.createEl("button", {
-      cls: "vault-ai-assistant-panel-header",
+      cls: "vault-chat-agent-panel-header",
       attr: { "aria-expanded": String(this.expandedPanels[panelId]) },
     });
     setIcon(header, this.expandedPanels[panelId] ? "chevron-down" : "chevron-right");
@@ -264,13 +264,13 @@ export class ChatView extends ItemView {
       return null;
     }
 
-    return panelEl.createDiv({ cls: `vault-ai-assistant-panel-body vault-ai-assistant-panel-${panelId}` });
+    return panelEl.createDiv({ cls: `vault-chat-agent-panel-body vault-chat-agent-panel-${panelId}` });
   }
 
   private renderInput(): void {
-    const inputRow = this.containerEl.createDiv({ cls: "vault-ai-assistant-input-row" });
+    const inputRow = this.containerEl.createDiv({ cls: "vault-chat-agent-input-row" });
     const textarea = inputRow.createEl("textarea", {
-      cls: "vault-ai-assistant-input",
+      cls: "vault-chat-agent-input",
       attr: {
         placeholder: this.intent === "edit" ? "Ask for reviewed changes..." : "Ask about your vault...",
       },

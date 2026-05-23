@@ -54,53 +54,53 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
         ),
     );
 
-    this.addRibbonIcon("message-square", "Open Vault AI Assistant", () => {
+    this.addRibbonIcon("message-square", "Open Vault Chat Agent", () => {
       void this.activateView();
     });
 
     this.addCommand({
-      id: "open-vault-ai-assistant-chat",
-      name: "Open Vault AI Assistant chat",
+      id: "open-vault-chat-agent-chat",
+      name: "Open Vault Chat Agent chat",
       callback: () => {
         void this.activateView();
       },
     });
 
     this.addCommand({
-      id: "reindex-vault-ai-assistant",
-      name: "Re-index vault for Vault AI Assistant",
+      id: "reindex-vault-chat-agent",
+      name: "Re-index vault for Vault Chat Agent",
       callback: () => {
         void this.indexVault();
       },
     });
 
     this.addCommand({
-      id: "summarize-current-note-vault-ai-assistant",
-      name: "Vault AI Assistant: summarize current note",
+      id: "summarize-current-note-vault-chat-agent",
+      name: "Vault Chat Agent: summarize current note",
       callback: () => {
         void this.runCurrentNoteTask("summarize");
       },
     });
 
     this.addCommand({
-      id: "review-current-note-vault-ai-assistant",
-      name: "Vault AI Assistant: review current note",
+      id: "review-current-note-vault-chat-agent",
+      name: "Vault Chat Agent: review current note",
       callback: () => {
         void this.runCurrentNoteTask("review");
       },
     });
 
     this.addCommand({
-      id: "extract-tasks-current-note-vault-ai-assistant",
-      name: "Vault AI Assistant: extract tasks from current note",
+      id: "extract-tasks-current-note-vault-chat-agent",
+      name: "Vault Chat Agent: extract tasks from current note",
       callback: () => {
         void this.runCurrentNoteTask("tasks");
       },
     });
 
     this.addCommand({
-      id: "improve-current-note-vault-ai-assistant",
-      name: "Vault AI Assistant: propose improvements to current note",
+      id: "improve-current-note-vault-chat-agent",
+      name: "Vault Chat Agent: propose improvements to current note",
       callback: () => {
         void this.runCurrentNoteTask("improve");
       },
@@ -111,8 +111,8 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     if (this.indexStore.getAllChunks().length === 0) {
       void this.indexVault().catch((error) => {
-        console.error("Vault AI Assistant initial indexing failed", error);
-        new Notice("Vault AI Assistant: initial indexing failed. See console for details.", 6000);
+        console.error("Vault Chat Agent initial indexing failed", error);
+        new Notice("Vault Chat Agent: initial indexing failed. See console for details.", 6000);
       });
     }
   }
@@ -140,7 +140,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
     const indexed = await indexVaultFiles(this.app.vault, this.app.metadataCache, this.chunker, this.indexStore);
     this.searchEngine.setChunks(this.indexStore.getAllChunks());
     await this.savePluginData();
-    new Notice(`Vault AI Assistant: indexed ${indexed.indexedFiles}/${indexed.totalFiles} files.`, 3000);
+    new Notice(`Vault Chat Agent: indexed ${indexed.indexedFiles}/${indexed.totalFiles} files.`, 3000);
   }
 
   configureRealtimeIndexer(): void {
@@ -183,7 +183,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
     if (!leaf) {
       leaf = this.app.workspace.getRightLeaf(false);
       if (!leaf) {
-        new Notice("Vault AI Assistant: could not open chat pane.", 4000);
+        new Notice("Vault Chat Agent: could not open chat pane.", 4000);
         return null;
       }
       await leaf.setViewState({ type: CHAT_VIEW_TYPE, active: true });
@@ -196,7 +196,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
   private async runCurrentNoteTask(task: "summarize" | "review" | "tasks" | "improve"): Promise<void> {
     const file = this.app.workspace.getActiveFile();
     if (!file) {
-      new Notice("Vault AI Assistant: no active note.", 3000);
+      new Notice("Vault Chat Agent: no active note.", 3000);
       return;
     }
 

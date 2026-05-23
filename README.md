@@ -1,4 +1,4 @@
-# Vault AI Assistant
+# Vault Chat Agent
 
 AI assistant plugin for working with your Obsidian vault.
 
@@ -23,7 +23,7 @@ npm run build
 Then copy the contents of `dist/` into:
 
 ```text
-<vault>/.obsidian/plugins/vault-ai-assistant/
+<vault>/.obsidian/plugins/vault-chat-agent/
 ```
 
 Enable the plugin in Obsidian community plugin settings, then configure an OpenAI-compatible provider in the plugin settings.

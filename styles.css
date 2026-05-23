@@ -1,11 +1,11 @@
-.vault-ai-assistant-view {
+.vault-chat-agent-view {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-width: 0;
 }
 
-.vault-ai-assistant-toolbar {
+.vault-chat-agent-toolbar {
   align-items: center;
   border-bottom: 1px solid var(--background-modifier-border);
   display: flex;
@@ -14,7 +14,7 @@
   padding: 8px;
 }
 
-.vault-ai-assistant-intent-control {
+.vault-chat-agent-intent-control {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
@@ -25,7 +25,7 @@
   padding: 2px;
 }
 
-.vault-ai-assistant-intent-button {
+.vault-chat-agent-intent-button {
   border-radius: 4px;
   box-shadow: none;
   font-size: var(--font-ui-small);
@@ -36,12 +36,12 @@
   white-space: nowrap;
 }
 
-.vault-ai-assistant-intent-button.is-active {
+.vault-chat-agent-intent-button.is-active {
   background: var(--interactive-accent);
   color: var(--text-on-accent);
 }
 
-.vault-ai-assistant-messages {
+.vault-chat-agent-messages {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -51,7 +51,7 @@
   padding: 12px;
 }
 
-.vault-ai-assistant-message {
+.vault-chat-agent-message {
   border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
   max-width: 92%;
@@ -60,23 +60,23 @@
   white-space: pre-wrap;
 }
 
-.vault-ai-assistant-message-user {
+.vault-chat-agent-message-user {
   align-self: flex-end;
   background: var(--interactive-accent);
   color: var(--text-on-accent);
 }
 
-.vault-ai-assistant-message-assistant {
+.vault-chat-agent-message-assistant {
   align-self: flex-start;
   background: var(--background-secondary);
 }
 
-.vault-ai-assistant-message-error {
+.vault-chat-agent-message-error {
   border-color: var(--text-error);
   color: var(--text-error);
 }
 
-.vault-ai-assistant-status {
+.vault-chat-agent-status {
   align-self: flex-start;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
@@ -85,25 +85,25 @@
   padding: 8px 10px;
 }
 
-.vault-ai-assistant-input-row {
+.vault-chat-agent-input-row {
   border-top: 1px solid var(--background-modifier-border);
   display: flex;
   gap: 8px;
   padding: 8px;
 }
 
-.vault-ai-assistant-input {
+.vault-chat-agent-input {
   flex: 1;
   min-height: 64px;
   min-width: 0;
   resize: vertical;
 }
 
-.vault-ai-assistant-panel {
+.vault-chat-agent-panel {
   border-top: 1px solid var(--background-modifier-border);
 }
 
-.vault-ai-assistant-panel-header {
+.vault-chat-agent-panel-header {
   align-items: center;
   background: transparent;
   border-radius: 0;
@@ -118,7 +118,7 @@
   width: 100%;
 }
 
-.vault-ai-assistant-panel-body {
+.vault-chat-agent-panel-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -127,41 +127,41 @@
   padding: 0 12px 12px;
 }
 
-.vault-ai-assistant-panel-actions {
+.vault-chat-agent-panel-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
 }
 
-.vault-ai-assistant-source,
-.vault-ai-assistant-edit {
+.vault-chat-agent-source,
+.vault-chat-agent-edit {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 6px;
   padding: 8px;
 }
 
-.vault-ai-assistant-source-title,
-.vault-ai-assistant-edit-title {
+.vault-chat-agent-source-title,
+.vault-chat-agent-edit-title {
   color: var(--text-accent);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.vault-ai-assistant-source-snippet,
-.vault-ai-assistant-edit-summary {
+.vault-chat-agent-source-snippet,
+.vault-chat-agent-edit-summary {
   color: var(--text-muted);
   margin-top: 4px;
   overflow-wrap: anywhere;
 }
 
-.vault-ai-assistant-edit {
+.vault-chat-agent-edit {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.vault-ai-assistant-diff {
+.vault-chat-agent-diff {
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
@@ -173,35 +173,35 @@
   white-space: pre;
 }
 
-.vault-ai-assistant-diff-line {
+.vault-chat-agent-diff-line {
   padding: 0 8px;
 }
 
-.vault-ai-assistant-diff-add {
+.vault-chat-agent-diff-add {
   background: rgba(80, 200, 120, 0.16);
   color: var(--text-normal);
 }
 
-.vault-ai-assistant-diff-remove {
+.vault-chat-agent-diff-remove {
   background: rgba(255, 90, 90, 0.16);
   color: var(--text-normal);
 }
 
-.vault-ai-assistant-edit-actions {
+.vault-chat-agent-edit-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
 }
 
-.vault-ai-assistant-working-set-item {
+.vault-chat-agent-working-set-item {
   align-items: center;
   display: grid;
   gap: 6px;
   grid-template-columns: max-content minmax(0, 1fr);
 }
 
-.vault-ai-assistant-working-set-role {
+.vault-chat-agent-working-set-role {
   border: 1px solid var(--background-modifier-border);
   border-radius: 4px;
   color: var(--text-muted);
@@ -211,7 +211,7 @@
   text-transform: capitalize;
 }
 
-.vault-ai-assistant-working-set-path {
+.vault-chat-agent-working-set-path {
   color: var(--text-accent);
   min-width: 0;
   overflow: hidden;
@@ -219,7 +219,7 @@
   white-space: nowrap;
 }
 
-.vault-ai-assistant-working-set-detail {
+.vault-chat-agent-working-set-detail {
   color: var(--text-muted);
   grid-column: 2;
   min-width: 0;

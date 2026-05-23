@@ -1,5 +1,5 @@
 {
-  "name": "redzumi-ai-chat-assistant",
+  "name": "vault-chat-agent",
   "version": "0.1.9",
   "description": "Chat with an AI assistant that can search your vault, inspect notes, and prepare edits for review",
   "main": "main.js",

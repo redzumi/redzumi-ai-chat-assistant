@@ -1,7 +1,7 @@
 {
   "id": "redzumi-ai-chat-assistant",
   "name": "Vault AI Assistant",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "minAppVersion": "1.5.0",
   "description": "Chat with an AI assistant that can search your vault, inspect notes, and prepare edits for review",
   "author": "Evgenii Bykovskikh",

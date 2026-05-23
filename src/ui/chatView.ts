@@ -1,5 +1,6 @@
 import { ItemView, MarkdownRenderer, Notice, setIcon, TFolder, WorkspaceLeaf } from "obsidian";
-import { AgentToolExecutor, ChatIntent, DebugLogEntry, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
+import { AgentToolExecution, AgentToolExecutor, ChatIntent, DebugLogEntry, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
+import { ObsidianMcpServer, summarizePendingEdit } from "../mcp/obsidianMcpServer";
 import { AIChatClient } from "../services/aiChatClient";
 
 export const CHAT_VIEW_TYPE = "vault-chat-agent-chat-view";
@@ -378,12 +379,22 @@ export class ChatView extends ItemView {
     try {
       this.statusText = this.intent === "edit" ? "Preparing reviewed changes..." : "Inspecting the vault...";
       this.render();
-      const result = await this.aiChatClient.completeWithAgent(content, history, this.agentTools, this.intent, (entry) => {
-        this.debugLogs.push(entry);
-        if (this.expandedPanels.debug) {
-          this.render();
-        }
-      });
+      const result = await this.aiChatClient.completeWithAgent(
+        content,
+        history,
+        this.createMcpServer(),
+        this.intent,
+        (entry) => {
+          this.debugLogs.push(entry);
+          if (this.expandedPanels.debug) {
+            this.render();
+          }
+        },
+        {
+          intent: this.intent,
+          pendingEdits: this.pendingEdits.map(summarizePendingEdit),
+        },
+      );
       this.lastSources = result.sources;
       this.pendingEdits = this.pendingEdits.concat(result.pendingEdits);
       this.workingSet = mergeWorkingSet(
@@ -401,6 +412,49 @@ export class ChatView extends ItemView {
       this.statusText = "";
       this.render();
     }
+  }
+
+  private createMcpServer(): ObsidianMcpServer {
+    return new ObsidianMcpServer(
+      this.agentTools,
+      (id) => this.applyPendingEditTool(id),
+      () => this.applyAllPendingEditsTool(),
+    );
+  }
+
+  private async applyPendingEditTool(id: string): Promise<AgentToolExecution> {
+    const edit = this.pendingEdits.find((pending) => pending.id === id);
+    if (!edit) {
+      return { content: `Pending edit not found: ${id || "(missing id)"}.` };
+    }
+
+    await this.agentTools.applyEdit(edit);
+    this.pendingEdits = this.pendingEdits.filter((pending) => pending.id !== edit.id);
+    this.workingSet = mergeWorkingSet(this.workingSet, [{ path: edit.path, role: "edited", detail: `Applied: ${edit.summary}` }]);
+    return {
+      content: `Applied pending edit ${edit.id} to ${edit.path}.`,
+      workingSetItems: [{ path: edit.path, role: "edited", detail: `Applied: ${edit.summary}` }],
+    };
+  }
+
+  private async applyAllPendingEditsTool(): Promise<AgentToolExecution> {
+    if (this.pendingEdits.length === 0) {
+      return { content: "There are no pending edits to apply." };
+    }
+
+    const edits = [...this.pendingEdits];
+    const appliedPaths: string[] = [];
+    for (const edit of edits) {
+      await this.agentTools.applyEdit(edit);
+      this.pendingEdits = this.pendingEdits.filter((pending) => pending.id !== edit.id);
+      this.workingSet = mergeWorkingSet(this.workingSet, [{ path: edit.path, role: "edited", detail: `Applied: ${edit.summary}` }]);
+      appliedPaths.push(edit.path);
+    }
+
+    return {
+      content: `Applied ${appliedPaths.length} pending edits:\n${appliedPaths.map((path) => `- ${path}`).join("\n")}`,
+      workingSetItems: appliedPaths.map((path) => ({ path, role: "edited", detail: "Applied pending edit" })),
+    };
   }
 
   private async applyPendingEdit(edit: PendingEdit): Promise<void> {

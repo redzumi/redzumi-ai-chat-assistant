@@ -6,5 +6,5 @@
   "description": "Chat with an AI assistant that can search your vault, inspect notes, and prepare edits for review.",
   "author": "Evgenii Bykovskikh",
   "authorUrl": "",
-  "isDesktopOnly": false
+  "isDesktopOnly": true
 }

@@ -1,8 +1,25 @@
-import { AgentCompletion, AgentToolExecutor, ChatIntent, DebugLogEntry, ObsidianAIAssistantSettings, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
+import { AgentCompletion, ChatIntent, DebugLogEntry, McpToolCallContext, McpToolDefinition, McpToolServer, ObsidianAIAssistantSettings, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
 
 interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_call_id?: string;
+  tool_calls?: ModelToolCall[];
+}
+
+interface ModelToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+interface ModelAssistantMessage {
+  role: "assistant";
+  content?: string | null;
+  tool_calls?: ModelToolCall[];
 }
 
 type DebugLogger = (entry: DebugLogEntry) => void;
@@ -13,149 +30,115 @@ export class AIChatClient {
     private readonly getVaultOverview: () => string,
   ) {}
 
-  async completeWithAgent(userMessage: string, history: ChatMessage[], tools: AgentToolExecutor, intent: ChatIntent, logDebug?: DebugLogger): Promise<AgentCompletion> {
+  async completeWithAgent(
+    userMessage: string,
+    history: Array<{ role: "user" | "assistant"; content: string }>,
+    mcpServer: McpToolServer,
+    intent: ChatIntent,
+    logDebug?: DebugLogger,
+    context: McpToolCallContext = { intent, pendingEdits: [] },
+  ): Promise<AgentCompletion> {
     const messages: ChatMessage[] = [
-      { role: "system", content: this.buildAgentSystemPrompt(intent) },
-      ...history.slice(-8),
+      { role: "system", content: this.buildAgentSystemPrompt(intent, context.pendingEdits) },
+      ...history.slice(-8).map((message) => ({ role: message.role, content: message.content }) satisfies ChatMessage),
       { role: "user", content: userMessage },
     ];
+    const toolDefinitions = mcpServer.listTools(context);
     const sources = new Map<string, SearchResult>();
     const pendingEdits: PendingEdit[] = [];
     const workingSet = new Map<string, WorkingSetItem>();
-    let invalidActionCount = 0;
 
     emitDebug(logDebug, "agent-start", `Started ${intent} request`, {
       intent,
       userMessage,
       historyLength: history.length,
+      context,
+      tools: toolDefinitions.map((tool) => tool.name),
       messages,
     });
 
     for (let step = 0; step < 30; step += 1) {
-      const content = await this.requestCompletion(messages, 8000, logDebug, step + 1);
-      const action = parseAgentAction(content);
+      const assistantMessage = await this.requestCompletion(messages, toolDefinitions, 8000, logDebug, step + 1);
+      const toolCalls = assistantMessage.tool_calls ?? [];
+      const content = assistantMessage.content?.trim() ?? "";
 
-      if (action.final) {
+      if (toolCalls.length === 0) {
         emitDebug(logDebug, "agent-final", "Model returned final answer", {
           step: step + 1,
-          answer: action.final.trim(),
+          answer: content,
           sources: Array.from(sources.values()),
           pendingEdits,
           workingSet: Array.from(workingSet.values()),
         });
-        return { answer: action.final.trim(), sources: Array.from(sources.values()), pendingEdits, workingSet: Array.from(workingSet.values()) };
+        return { answer: content, sources: Array.from(sources.values()), pendingEdits, workingSet: Array.from(workingSet.values()) };
       }
 
-      if (!action.tool) {
-        if (action.malformedJson || action.unsupportedJson) {
-          invalidActionCount += 1;
-          if (invalidActionCount > 2) {
-            emitDebug(logDebug, "agent-final", "Stopped after repeated invalid model actions", {
-              step: step + 1,
-              invalidActionCount,
-              content,
-            });
-            return {
-              answer: "I could not complete the action because the model kept returning invalid or truncated JSON. Try again with Edit mode and ask it to use chunked note creation.",
-              sources: Array.from(sources.values()),
-              pendingEdits,
-              workingSet: Array.from(workingSet.values()),
-            };
-          }
-
-          messages.push({ role: "assistant", content: summarizeInvalidAction(content, action) });
-          messages.push({
-            role: "user",
-            content: [
-              "Your previous response was not a valid action.",
-              action.malformedJson ? "It looked like malformed or truncated JSON." : "It was valid JSON, but it did not contain a supported tool or final field.",
-              "Return exactly one supported JSON object.",
-              intent === "edit"
-                ? "For long new notes, use beginNewNote, appendNewNote in chunks, then finishNewNote. For short new notes, use proposeNewNote."
-                : "In Ask mode, answer with {\"final\":\"...\"} and do not prepare edits.",
-            ].join("\n"),
-          });
-          continue;
-        }
-        emitDebug(logDebug, "agent-final", "Model returned plain text instead of an action", {
-          step: step + 1,
-          content,
-        });
-        return { answer: content.trim(), sources: Array.from(sources.values()), pendingEdits, workingSet: Array.from(workingSet.values()) };
-      }
-
-      invalidActionCount = 0;
-      messages.push({ role: "assistant", content: summarizeActionForHistory(action) });
-      if (!isToolAllowed(action.tool, intent)) {
-        messages.push({
-          role: "user",
-          content: [
-            `Tool ${action.tool} is not available in ${intent === "ask" ? "Ask" : "Edit"} mode.`,
-            intent === "ask" ? "Answer without preparing edits. If file changes are needed, tell the user to switch to Edit." : "Use one of the available tools.",
-          ].join("\n"),
-        });
-        continue;
-      }
-
-      emitDebug(logDebug, "tool-call", `Calling ${action.tool}`, {
-        step: step + 1,
-        tool: action.tool,
-        args: action.args ?? {},
-        reason: "reason" in action ? action.reason : undefined,
-      });
-      const result = await tools.execute(action.tool, action.args ?? {});
-      emitDebug(logDebug, "tool-result", `Tool result from ${action.tool}`, {
-        step: step + 1,
-        tool: action.tool,
-        result,
-      });
-      for (const source of result.sources ?? []) {
-        sources.set(source.chunk.id, source);
-        mergeWorkingSetItem(workingSet, {
-          path: source.chunk.filePath,
-          role: "searched",
-          detail: `Used by ${action.tool}`,
-        });
-      }
-      if (result.pendingEdit) {
-        pendingEdits.push(result.pendingEdit);
-      }
-      for (const pendingEdit of result.pendingEdits ?? []) {
-        pendingEdits.push(pendingEdit);
-      }
-      for (const item of result.workingSetItems ?? []) {
-        mergeWorkingSetItem(workingSet, item);
-      }
       messages.push({
-        role: "user",
-        content: [
-          `Tool result for ${action.tool}:`,
-          result.content,
-          "",
-          "Continue. Use another tool if needed, or return final JSON.",
-        ].join("\n"),
+        role: "assistant",
+        content: assistantMessage.content ?? null,
+        tool_calls: toolCalls,
       });
+
+      for (const toolCall of toolCalls) {
+        const args = parseToolArguments(toolCall.function.arguments);
+        emitDebug(logDebug, "tool-call", `Calling ${toolCall.function.name}`, {
+          step: step + 1,
+          toolCall,
+          args,
+        });
+
+        const result = await mcpServer.callTool(toolCall.function.name, args, context);
+        emitDebug(logDebug, "tool-result", `Tool result from ${toolCall.function.name}`, {
+          step: step + 1,
+          tool: toolCall.function.name,
+          result,
+        });
+
+        for (const source of result.sources ?? []) {
+          sources.set(source.chunk.id, source);
+          mergeWorkingSetItem(workingSet, {
+            path: source.chunk.filePath,
+            role: "searched",
+            detail: `Used by ${toolCall.function.name}`,
+          });
+        }
+        if (result.pendingEdit) {
+          pendingEdits.push(result.pendingEdit);
+        }
+        for (const pendingEdit of result.pendingEdits ?? []) {
+          pendingEdits.push(pendingEdit);
+        }
+        for (const item of result.workingSetItems ?? []) {
+          mergeWorkingSetItem(workingSet, item);
+        }
+
+        messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(summarizeToolResult(result)),
+        });
+      }
     }
 
     messages.push({
       role: "user",
       content:
         pendingEdits.length > 0
-          ? "Stop using tools and summarize the pending edits now as JSON: {\"final\":\"...\"}."
-          : "Stop using tools and provide the best final answer now as JSON: {\"final\":\"...\"}. If you were creating a long note and have not finished it, say it was not completed.",
+          ? "Stop using tools and summarize the pending edits now."
+          : "Stop using tools and provide the best final answer now. If you were creating a long note and have not finished it, say it was not completed.",
     });
-    const finalContent = await this.requestCompletion(messages, 1800, logDebug, 31);
-    const finalAction = parseAgentAction(finalContent);
+    const finalMessage = await this.requestCompletion(messages, toolDefinitions, 1800, logDebug, 31);
+    const answer = finalMessage.content?.trim() ?? "";
     emitDebug(logDebug, "agent-final", "Agent stopped after step limit", {
-      answer: finalAction.final ?? finalContent,
+      answer,
       sources: Array.from(sources.values()),
       pendingEdits,
       workingSet: Array.from(workingSet.values()),
     });
-    return { answer: (finalAction.final ?? finalContent).trim(), sources: Array.from(sources.values()), pendingEdits, workingSet: Array.from(workingSet.values()) };
+    return { answer, sources: Array.from(sources.values()), pendingEdits, workingSet: Array.from(workingSet.values()) };
   }
 
-  private async requestCompletion(messages: ChatMessage[], maxTokens: number, logDebug?: DebugLogger, step?: number): Promise<string> {
+  private async requestCompletion(messages: ChatMessage[], toolDefinitions: McpToolDefinition[], maxTokens: number, logDebug?: DebugLogger, step?: number): Promise<ModelAssistantMessage> {
     const settings = this.getSettings();
     if (this.requiresApiKey(settings) && !settings.apiKey.trim()) {
       emitDebug(logDebug, "model-error", "Request blocked because the API key is not configured", {
@@ -178,6 +161,8 @@ export class AIChatClient {
     const requestBody = {
       model: settings.model,
       messages,
+      tools: toolDefinitions.map(toOpenAiTool),
+      tool_choice: "auto",
       temperature: 0.2,
       max_tokens: maxTokens,
       stream: false,
@@ -216,8 +201,8 @@ export class AIChatClient {
     }
 
     const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
+    const message = data?.choices?.[0]?.message;
+    if (!isAssistantMessage(message)) {
       emitDebug(logDebug, "model-error", `Request ${step ?? "?"} returned an unexpected response`, {
         step,
         durationMs: Date.now() - startedAt,
@@ -230,11 +215,11 @@ export class AIChatClient {
       step,
       status: response.status,
       durationMs: Date.now() - startedAt,
-      content,
+      message,
       response: data,
     });
 
-    return content.trim();
+    return message;
   }
 
   private requiresApiKey(settings: ObsidianAIAssistantSettings): boolean {
@@ -246,24 +231,13 @@ export class AIChatClient {
     }
   }
 
-  private buildAgentSystemPrompt(intent: ChatIntent): string {
+  private buildAgentSystemPrompt(intent: ChatIntent, pendingEdits: McpToolCallContext["pendingEdits"]): string {
     const customSystemPrompt = this.getSettings().systemPrompt.trim();
-    const editTools =
-      intent === "edit"
-        ? [
-            "- beginNewNote: args {\"path\":\"folder/name.md\",\"summary\":\"...\"}. Start a pending new note draft for long content.",
-            "- appendNewNote: args {\"draftId\":\"...\",\"content\":\"markdown chunk\"}. Append one content chunk to a draft.",
-            "- finishNewNote: args {\"draftId\":\"...\"}. Convert a completed draft into a pending new note for user review.",
-            "- proposeNewNote: args {\"path\":\"folder/name.md\",\"summary\":\"...\",\"content\":\"full note content\"}. Prepare a pending new note for user review.",
-            "- proposePatch: args {\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}. Prepare a small pending patch for user review.",
-            "- proposePatchBatch: args {\"summary\":\"...\",\"patches\":[{\"path\":\"...\",\"summary\":\"...\",\"find\":\"exact existing text\",\"replace\":\"replacement text\"}]}. Prepare multiple pending patches for user review.",
-            "- proposeEdit: args {\"path\":\"...\",\"summary\":\"...\",\"newContent\":\"full replacement file content\"}. Prepare a pending edit for user review.",
-          ]
-        : [];
     const editPolicy =
       intent === "edit"
         ? [
-            "You may propose file creation or edits only with beginNewNote, appendNewNote, finishNewNote, proposeNewNote, proposePatch, proposePatchBatch, or proposeEdit.",
+            "You may propose file creation or edits with available edit tools.",
+            "You cannot directly apply newly proposed edits. Proposed edits stay pending until the user reviews or explicitly asks to apply them.",
             "For long new notes, use beginNewNote, then appendNewNote with chunks under 2000 characters each, then finishNewNote.",
             "Use proposeNewNote only for short new notes.",
             "Prefer proposePatch for one normal edit and proposePatchBatch for multiple normal edits. Use proposeEdit only when the user asks to rewrite a full file or the patch would be larger than the original file.",
@@ -272,63 +246,96 @@ export class AIChatClient {
             "For proposeEdit, newContent must be the complete replacement content for the file, not a partial patch.",
           ]
         : [
-            "You are in Ask mode. Do not propose pending edits and do not call edit tools.",
+            "You are in Ask mode. Do not propose new pending edits.",
             "If the user asks for file changes, explain what you would change and ask them to switch to Edit mode.",
           ];
 
     return [
       "You are an AI agent inside Obsidian.",
-      intent === "edit" ? "You can inspect the user's vault and propose file edits with tools before answering." : "You can inspect the user's vault with read-only tools before answering.",
-      intent === "edit" ? "You cannot directly apply edits. All edits are pending until the user reviews and applies them." : "You cannot prepare or apply edits in Ask mode.",
+      intent === "edit" ? "You can inspect the user's vault and propose reviewed file edits with tools before answering." : "You can inspect the user's vault with read-only tools before answering.",
       "Use tools when the answer needs more context than the current conversation.",
       "Cite file paths when using vault content.",
       "If the vault does not contain enough information, say so clearly.",
-      ...(customSystemPrompt ? ["", "Additional user instructions:", customSystemPrompt] : []),
-      "",
-      "Available tools:",
-      "- searchNotes: args {\"query\":\"...\",\"topK\":6}. Search indexed chunks.",
-      "- getCurrentNote: args {}. Get the current active note path and metadata.",
-      "- openCurrentNote: args {\"maxChars\":6000}. Read the current active note.",
-      "- openNote: args {\"path\":\"...\",\"maxChars\":6000}. Read a specific text note/file.",
-      "- listFolder: args {\"path\":\"...\"}. List files in a folder. Use empty path for vault root.",
-      "- getLinks: args {\"path\":\"...\"}. Show outgoing links and backlinks for a file.",
-      "- getVaultOverview: args {}. Show the current vault index overview.",
-      ...editTools,
-      "",
+      "Do not say you will inspect, search, open, create, patch, or edit something later. If that action is needed, call a tool in the same response.",
+      "Apply existing pending edits only when the user explicitly asks to apply them.",
       ...editPolicy,
-      "",
-      "Respond with exactly one JSON object and no markdown.",
-      "To call a tool: {\"tool\":\"searchNotes\",\"args\":{\"query\":\"project plan\",\"topK\":6},\"reason\":\"...\"}",
-      intent === "edit" ? "To create a long note: first {\"tool\":\"beginNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"Create note\"},\"reason\":\"...\"}; then append chunks; then finish the draft." : "",
-      intent === "edit" ? "To create a short note: {\"tool\":\"proposeNewNote\",\"args\":{\"path\":\"folder/name.md\",\"summary\":\"Create note\",\"content\":\"# Title\\n...\"},\"reason\":\"...\"}" : "",
-      "To answer finally: {\"final\":\"Your answer with cited file paths and mention any pending edits.\"}",
+      ...(pendingEdits.length > 0
+        ? [
+            "",
+            "Current pending edits:",
+            ...pendingEdits.map((edit, index) => `${index + 1}. id=${edit.id}; kind=${edit.kind}; path=${edit.path}; summary=${edit.summary}`),
+          ]
+        : []),
+      ...(customSystemPrompt ? ["", "Additional user instructions:", customSystemPrompt] : []),
       "",
       "VAULT INDEX OVERVIEW:",
       this.getVaultOverview(),
     ].join("\n");
   }
-
 }
 
-const LARGE_ARG_KEYS = new Set(["content", "newContent", "find", "replace"]);
+function toOpenAiTool(tool: McpToolDefinition): Record<string, unknown> {
+  return {
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
+  };
+}
 
-const READ_ONLY_TOOLS = new Set(["searchNotes", "getCurrentNote", "openCurrentNote", "openNote", "listFolder", "getLinks", "getVaultOverview"]);
-const EDIT_TOOLS = new Set(["beginNewNote", "appendNewNote", "finishNewNote", "proposeNewNote", "proposePatch", "proposePatchBatch", "proposeEdit"]);
-
-function isToolAllowed(toolName: string, intent: ChatIntent): boolean {
-  if (READ_ONLY_TOOLS.has(toolName)) {
-    return true;
+function parseToolArguments(rawArguments: string): Record<string, unknown> {
+  if (!rawArguments.trim()) {
+    return {};
   }
-  return intent === "edit" && EDIT_TOOLS.has(toolName);
+
+  try {
+    const parsed = JSON.parse(rawArguments) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
-interface AgentAction {
-  tool?: string;
-  args?: Record<string, unknown>;
-  final?: string;
-  reason?: string;
-  malformedJson?: boolean;
-  unsupportedJson?: boolean;
+function summarizeToolResult(result: {
+  content: string;
+  sources?: SearchResult[];
+  pendingEdit?: PendingEdit;
+  pendingEdits?: PendingEdit[];
+  workingSetItems?: WorkingSetItem[];
+}): Record<string, unknown> {
+  return {
+    content: result.content,
+    sources: result.sources?.map((source) => ({
+      path: source.chunk.filePath,
+      score: source.score,
+      snippet: source.chunk.content.slice(0, 1200),
+    })),
+    pendingEdit: result.pendingEdit ? summarizePendingEdit(result.pendingEdit) : undefined,
+    pendingEdits: result.pendingEdits?.map(summarizePendingEdit),
+    workingSetItems: result.workingSetItems,
+  };
+}
+
+function summarizePendingEdit(edit: PendingEdit): Pick<PendingEdit, "id" | "path" | "kind" | "summary"> {
+  return {
+    id: edit.id,
+    path: edit.path,
+    kind: edit.kind,
+    summary: edit.summary,
+  };
+}
+
+function isAssistantMessage(value: unknown): value is ModelAssistantMessage {
+  if (!isRecord(value) || value.role !== "assistant") {
+    return false;
+  }
+  return typeof value.content === "string" || value.content === null || typeof value.content === "undefined";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function emitDebug(logDebug: DebugLogger | undefined, type: DebugLogEntry["type"], summary: string, data: unknown): void {
@@ -343,103 +350,6 @@ function emitDebug(logDebug: DebugLogger | undefined, type: DebugLogEntry["type"
     summary,
     data,
   });
-}
-
-function summarizeActionForHistory(action: AgentAction): string {
-  if (!action.tool) {
-    return "{\"final\":\"...\"}";
-  }
-
-  const args: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(action.args ?? {})) {
-    if (LARGE_ARG_KEYS.has(key) && typeof value === "string") {
-      args[key] = `[omitted ${value.length} chars]`;
-    } else if (key === "patches" && Array.isArray(value)) {
-      args[key] = `[omitted ${value.length} patches]`;
-    } else {
-      args[key] = value;
-    }
-  }
-
-  return JSON.stringify({ tool: action.tool, args });
-}
-
-function summarizeInvalidAction(content: string, action: AgentAction): string {
-  const reason = action.malformedJson ? "malformed_json" : "unsupported_json";
-  return JSON.stringify({ error: reason, omittedResponseChars: content.length });
-}
-
-function parseAgentAction(content: string): AgentAction {
-  const jsonText = extractJsonObject(content);
-  if (!jsonText) {
-    return looksLikeJson(content) ? { malformedJson: true } : {};
-  }
-
-  try {
-    const parsed = JSON.parse(jsonText) as AgentAction;
-    const action = {
-      tool: typeof parsed.tool === "string" ? parsed.tool : undefined,
-      args: isRecord(parsed.args) ? parsed.args : undefined,
-      final: typeof parsed.final === "string" ? parsed.final : undefined,
-      reason: typeof parsed.reason === "string" ? parsed.reason : undefined,
-    };
-    return action.tool || action.final ? action : { unsupportedJson: true };
-  } catch {
-    return { malformedJson: true };
-  }
-}
-
-function extractJsonObject(content: string): string | null {
-  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(content);
-  return findBalancedJsonObject(fenced ? fenced[1] : content);
-}
-
-function findBalancedJsonObject(content: string): string | null {
-  const start = content.indexOf("{");
-  if (start < 0) {
-    return null;
-  }
-
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let index = start; index < content.length; index += 1) {
-    const char = content[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = inString;
-      continue;
-    }
-    if (char === "\"") {
-      inString = !inString;
-      continue;
-    }
-    if (inString) {
-      continue;
-    }
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return content.slice(start, index + 1);
-      }
-    }
-  }
-
-  return null;
-}
-
-function looksLikeJson(content: string): boolean {
-  const trimmed = content.trim();
-  return trimmed.startsWith("{") || trimmed.startsWith("```json") || trimmed.startsWith("```");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function mergeWorkingSetItem(workingSet: Map<string, WorkingSetItem>, item: WorkingSetItem): void {

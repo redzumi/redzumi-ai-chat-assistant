@@ -69,6 +69,22 @@ export interface AgentToolExecutor {
   applyEdit(edit: PendingEdit): Promise<void>;
 }
 
+export interface McpToolDefinition {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface McpToolCallContext {
+  intent: ChatIntent;
+  pendingEdits: Array<Pick<PendingEdit, "id" | "path" | "kind" | "summary">>;
+}
+
+export interface McpToolServer {
+  listTools(context: McpToolCallContext): McpToolDefinition[];
+  callTool(name: string, args: Record<string, unknown>, context: McpToolCallContext): Promise<AgentToolExecution>;
+}
+
 export interface AgentCompletion {
   answer: string;
   sources: SearchResult[];

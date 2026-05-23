@@ -99,6 +99,12 @@
   resize: vertical;
 }
 
+.vault-chat-agent-system-prompt-input {
+  min-height: 96px;
+  min-width: min(420px, 100%);
+  resize: vertical;
+}
+
 .vault-chat-agent-panel {
   border-top: 1px solid var(--background-modifier-border);
 }

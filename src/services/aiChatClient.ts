@@ -162,6 +162,7 @@ export class AIChatClient {
   }
 
   private buildAgentSystemPrompt(intent: ChatIntent): string {
+    const customSystemPrompt = this.getSettings().systemPrompt.trim();
     const editTools =
       intent === "edit"
         ? [
@@ -197,6 +198,7 @@ export class AIChatClient {
       "Use tools when the answer needs more context than the current conversation.",
       "Cite file paths when using vault content.",
       "If the vault does not contain enough information, say so clearly.",
+      ...(customSystemPrompt ? ["", "Additional user instructions:", customSystemPrompt] : []),
       "",
       "Available tools:",
       "- searchNotes: args {\"query\":\"...\",\"topK\":6}. Search indexed chunks.",

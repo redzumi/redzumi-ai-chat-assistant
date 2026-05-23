@@ -9,6 +9,7 @@ export interface ObsidianAIAssistantSettings {
   topK: number;
   realtimeIndexing: boolean;
   defaultIntent: ChatIntent;
+  systemPrompt: string;
 }
 
 export type IndexedFileStatus = "indexed" | "metadata-only" | "error";
@@ -111,4 +112,5 @@ export const DEFAULT_SETTINGS: ObsidianAIAssistantSettings = {
   topK: 6,
   realtimeIndexing: true,
   defaultIntent: "ask",
+  systemPrompt: "Assume the user is not a developer. Explain technical details in plain language, avoid unnecessary implementation jargon, and ask before expecting them to make code-level decisions.",
 };

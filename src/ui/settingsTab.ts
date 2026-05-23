@@ -138,6 +138,21 @@ export class ObsidianAIAssistantSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("System prompt")
+      .setDesc("Extra instructions added to every chat. Use this to set tone, assumptions, and explanation style.")
+      .addTextArea((text) => {
+        text.inputEl.rows = 5;
+        text.inputEl.addClass("vault-chat-agent-system-prompt-input");
+        text
+          .setPlaceholder(DEFAULT_SETTINGS.systemPrompt)
+          .setValue(this.plugin.settings.systemPrompt)
+          .onChange(async (value) => {
+            this.plugin.settings.systemPrompt = value;
+            await this.plugin.savePluginData();
+          });
+      });
+
+    new Setting(containerEl)
       .setName("Realtime indexing")
       .setDesc("Update the local index when vault files change.")
       .addToggle((toggle) =>

@@ -8,6 +8,7 @@ AI assistant plugin for working with your Obsidian vault.
 - OpenAI-compatible chat completions via `/v1/chat/completions`.
 - Search scopes for whole-vault, current-note, and current-folder chat.
 - Plan mode for Edit chats, allowing read-only investigation before pending edits are prepared.
+- `@current`, `@[[Note]]`, `@path.md`, and `@folder/` context mentions in chat messages.
 - Provider presets for OpenAI, DeepSeek, OpenRouter, LM Studio, Ollama, and custom endpoints.
 - Model browsing from OpenAI-compatible `/v1/models` endpoints.
 - Local vault indexing across supported text files, Canvas files, and metadata-only attachments.

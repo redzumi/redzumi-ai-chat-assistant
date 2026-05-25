@@ -108,6 +108,39 @@
   padding: 8px;
 }
 
+.vault-chat-agent-mentions {
+  align-items: center;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 0;
+  padding: 0 8px;
+}
+
+.vault-chat-agent-mentions:not(:empty) {
+  padding-bottom: 6px;
+  padding-top: 6px;
+}
+
+.vault-chat-agent-mentions-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.vault-chat-agent-mention {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  max-width: 100%;
+  overflow: hidden;
+  padding: 1px 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .vault-chat-agent-input {
   flex: 1;
   min-height: 64px;

@@ -1,4 +1,4 @@
-import { ItemView, MarkdownRenderer, Notice, setIcon, TFolder, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, setIcon, TFile, TFolder, WorkspaceLeaf } from "obsidian";
 import { AgentToolExecution, AgentToolExecutor, ChatIntent, ChatRunMode, ChatSearchScope, ChatSearchScopeMode, DebugLogEntry, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
 import { ObsidianMcpServer, summarizePendingEdit } from "../mcp/obsidianMcpServer";
 import { AIChatClient } from "../services/aiChatClient";
@@ -11,6 +11,14 @@ interface ChatMessage {
   error?: boolean;
 }
 
+type MentionKind = "current" | "note" | "folder";
+
+interface ChatMention {
+  kind: MentionKind;
+  raw: string;
+  path?: string;
+}
+
 type PanelId = "edits" | "workingSet" | "sources" | "debug";
 
 export class ChatView extends ItemView {
@@ -20,6 +28,7 @@ export class ChatView extends ItemView {
   private lastSources: SearchResult[] = [];
   private searchScopeMode: ChatSearchScopeMode = "vault";
   private pendingEdits: PendingEdit[] = [];
+  private draftMentions: ChatMention[] = [];
   private workingSet: WorkingSetItem[] = [];
   private debugLogs: DebugLogEntry[] = [];
   private isSending = false;
@@ -109,6 +118,7 @@ export class ChatView extends ItemView {
       this.messages = [];
       this.lastSources = [];
       this.pendingEdits = [];
+      this.draftMentions = [];
       this.workingSet = [];
       this.debugLogs = [];
       this.render();
@@ -393,6 +403,9 @@ export class ChatView extends ItemView {
   }
 
   private renderInput(): void {
+    const mentionsEl = this.containerEl.createDiv({ cls: "vault-chat-agent-mentions" });
+    this.renderDraftMentions(mentionsEl);
+
     const inputRow = this.containerEl.createDiv({ cls: "vault-chat-agent-input-row" });
     const textarea = inputRow.createEl("textarea", {
       cls: "vault-chat-agent-input",
@@ -435,6 +448,22 @@ export class ChatView extends ItemView {
         send();
       }
     });
+    this.registerDomEvent(textarea, "input", () => {
+      this.draftMentions = parseMentions(textarea.value, (path) => this.resolveMentionPath(path));
+      this.renderDraftMentions(mentionsEl);
+    });
+  }
+
+  private renderDraftMentions(parent: HTMLElement): void {
+    parent.empty();
+    if (this.draftMentions.length === 0) {
+      return;
+    }
+
+    parent.createSpan({ cls: "vault-chat-agent-mentions-label", text: "Context" });
+    for (const mention of this.draftMentions) {
+      parent.createSpan({ cls: `vault-chat-agent-mention vault-chat-agent-mention-${mention.kind}`, text: formatMention(mention) });
+    }
   }
 
   private async sendMessage(content: string): Promise<void> {
@@ -443,6 +472,8 @@ export class ChatView extends ItemView {
       content: message.content,
     }));
 
+    const mentions = parseMentions(content, (path) => this.resolveMentionPath(path));
+    const agentContent = addMentionInstructions(content, mentions);
     this.messages.push({ role: "user", content });
     this.isSending = true;
     this.abortController = new AbortController();
@@ -455,7 +486,7 @@ export class ChatView extends ItemView {
       this.render();
       const searchScope = this.createSearchScope();
       const result = await this.aiChatClient.completeWithAgent(
-        content,
+        agentContent,
         history,
         this.createMcpServer(),
         this.intent,
@@ -527,6 +558,35 @@ export class ChatView extends ItemView {
 
     const folderPath = file.parent?.path ?? "";
     return folderPath ? { mode: "current-folder", path: folderPath } : { mode: "vault" };
+  }
+
+  private resolveMentionPath(rawPath: string): { kind: "note" | "folder"; path: string } | null {
+    const cleaned = rawPath.trim().replace(/^\/+/, "");
+    if (!cleaned) {
+      return null;
+    }
+
+    const direct = this.app.vault.getAbstractFileByPath(cleaned);
+    if (direct instanceof TFile) {
+      return { kind: "note", path: direct.path };
+    }
+    if (direct instanceof TFolder) {
+      return { kind: "folder", path: direct.path };
+    }
+
+    const markdownPath = cleaned.endsWith(".md") ? cleaned : `${cleaned}.md`;
+    const markdownFile = this.app.vault.getAbstractFileByPath(markdownPath);
+    if (markdownFile instanceof TFile) {
+      return { kind: "note", path: markdownFile.path };
+    }
+
+    const normalizedFolder = cleaned.replace(/\/$/, "");
+    const folder = this.app.vault.getAbstractFileByPath(normalizedFolder);
+    if (folder instanceof TFolder) {
+      return { kind: "folder", path: folder.path };
+    }
+
+    return cleaned.endsWith("/") ? { kind: "folder", path: normalizedFolder } : { kind: "note", path: markdownPath };
   }
 
   private async applyPendingEditTool(id: string): Promise<AgentToolExecution> {
@@ -650,6 +710,78 @@ function isAbortError(error: unknown): boolean {
 
 function isChatSearchScopeMode(value: string): value is ChatSearchScopeMode {
   return value === "vault" || value === "current-note" || value === "current-folder";
+}
+
+function parseMentions(content: string, resolvePath: (path: string) => { kind: "note" | "folder"; path: string } | null): ChatMention[] {
+  const mentions: ChatMention[] = [];
+  const seen = new Set<string>();
+  const addMention = (mention: ChatMention) => {
+    const key = `${mention.kind}:${mention.path ?? mention.raw}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    mentions.push(mention);
+  };
+
+  for (const match of content.matchAll(/(^|\s)@current\b/gi)) {
+    addMention({ kind: "current", raw: match[0].trim() });
+  }
+
+  for (const match of content.matchAll(/@\[\[([^\]]+)\]\]/g)) {
+    const rawPath = match[1].split("|")[0].split("#")[0].trim();
+    const resolved = resolvePath(rawPath);
+    if (resolved) {
+      addMention({ kind: resolved.kind, raw: match[0], path: resolved.path });
+    }
+  }
+
+  for (const match of content.matchAll(/(^|\s)@([^\s@[\]]+)/g)) {
+    const raw = match[2].trim().replace(/[),.;:!?]+$/, "");
+    if (!raw || raw.toLocaleLowerCase() === "current") {
+      continue;
+    }
+    const resolved = resolvePath(raw);
+    if (resolved) {
+      addMention({ kind: resolved.kind, raw: `@${raw}`, path: resolved.path });
+    }
+  }
+
+  return mentions.slice(0, 12);
+}
+
+function addMentionInstructions(content: string, mentions: ChatMention[]): string {
+  if (mentions.length === 0) {
+    return content;
+  }
+
+  const instructions = mentions.map((mention) => {
+    if (mention.kind === "current") {
+      return "- @current: call openCurrentNote before answering.";
+    }
+    if (mention.kind === "folder" && mention.path) {
+      return `- ${mention.raw}: call listFolder for "${mention.path}" and use searchNotes within the active scope when needed.`;
+    }
+    if (mention.kind === "note" && mention.path) {
+      return `- ${mention.raw}: call openNote for "${mention.path}" before answering.`;
+    }
+    return `- ${mention.raw}`;
+  });
+
+  return [
+    content,
+    "",
+    "Explicit context mentions:",
+    ...instructions,
+    "Use the mentioned context before answering. If a mentioned file or folder cannot be opened, say so clearly.",
+  ].join("\n");
+}
+
+function formatMention(mention: ChatMention): string {
+  if (mention.kind === "current") {
+    return "@current";
+  }
+  return `@${mention.path ?? mention.raw.replace(/^@/, "")}`;
 }
 
 function mergeWorkingSet(existing: WorkingSetItem[], ...groups: WorkingSetItem[][]): WorkingSetItem[] {

@@ -77,6 +77,15 @@ test("completeWithAgent preserves five previous chat messages before the current
   ]);
 });
 
+test("completeWithAgent strips reasoning blocks from final answers when enabled", async () => {
+  mockProviderResponses([assistantText("<think>private reasoning</think>\nVisible answer.")]);
+  const client = createClient({ stripReasoningBlocks: true });
+
+  const result = await client.completeWithAgent("answer plainly", [], fakeMcpServer({}), "ask");
+
+  equal(result.answer, "Visible answer.");
+});
+
 test("completeWithAgent aggregates pending edits returned by edit tools", async () => {
   const pendingEdit = {
     id: "edit_1",
@@ -110,6 +119,28 @@ test("completeWithAgent aggregates pending edits returned by edit tools", async 
   equal(result.answer, "I prepared the edit.");
   deepEqual(result.pendingEdits, [pendingEdit]);
   deepEqual(result.workingSet, [{ path: "Notes/A.md", role: "edited", detail: "Add a heading" }]);
+});
+
+test("completeWithAgent in plan mode exposes only read tools and asks for a plan", async () => {
+  const requests = mockProviderResponses([assistantText("Plan:\n1. Inspect Notes/A.md.\n2. Propose a small patch after approval.")]);
+  const client = createClient();
+
+  const result = await client.completeWithAgent(
+    "план изменений",
+    [],
+    fakeMcpServer({}),
+    "edit",
+    undefined,
+    { intent: "edit", runMode: "plan", pendingEdits: [], allowedCapabilities: ["read"] },
+  );
+
+  equal(result.answer, "Plan:\n1. Inspect Notes/A.md.\n2. Propose a small patch after approval.");
+  const request = requests[0];
+  const toolNames = (request.tools as Array<{ function: { name: string } }>).map((tool) => tool.function.name);
+  deepEqual(toolNames, ["listFolder", "getCurrentNote", "getLinks"]);
+  const systemPrompt = String(request.messages[0].content);
+  equal(systemPrompt.includes("You are in Plan mode."), true);
+  equal(systemPrompt.includes("must not propose edits or create pending edits"), true);
 });
 
 test("completeWithAgent executes multiple tool calls from one assistant response", async () => {

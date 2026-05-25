@@ -2,6 +2,7 @@ import { App, ItemView, MarkdownRenderer, Notice, setIcon, TFile, TFolder, Works
 import { AgentToolExecution, AgentToolExecutor, ChatIntent, ChatRunMode, ChatSearchScope, ChatSearchScopeMode, DebugLogEntry, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
 import { ObsidianMcpServer, summarizePendingEdit } from "../mcp/obsidianMcpServer";
 import { AIChatClient } from "../services/aiChatClient";
+import { addMentionInstructions, ChatMention, formatMention, getMentionTrigger, MentionKind, parseMentions } from "./mentions";
 
 export const CHAT_VIEW_TYPE = "vault-chat-agent-chat-view";
 
@@ -11,26 +12,12 @@ interface ChatMessage {
   error?: boolean;
 }
 
-type MentionKind = "current" | "note" | "folder";
-
-interface ChatMention {
-  kind: MentionKind;
-  raw: string;
-  path?: string;
-}
-
 interface MentionSuggestion {
   kind: MentionKind;
   label: string;
   detail: string;
   insertText: string;
   searchText: string;
-}
-
-interface MentionTrigger {
-  from: number;
-  to: number;
-  query: string;
 }
 
 type PanelId = "edits" | "workingSet" | "sources" | "debug";
@@ -465,13 +452,13 @@ export class ChatView extends ItemView {
         if (event.key === "ArrowDown") {
           event.preventDefault();
           this.selectedMentionIndex = (this.selectedMentionIndex + 1) % this.mentionSuggestions.length;
-          this.renderMentionSuggestions(suggestionsEl, textarea);
+          this.renderMentionSuggestions(suggestionsEl, textarea, mentionsEl);
           return;
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
           this.selectedMentionIndex = (this.selectedMentionIndex - 1 + this.mentionSuggestions.length) % this.mentionSuggestions.length;
-          this.renderMentionSuggestions(suggestionsEl, textarea);
+          this.renderMentionSuggestions(suggestionsEl, textarea, mentionsEl);
           return;
         }
         if (event.key === "Enter" || event.key === "Tab") {
@@ -483,7 +470,7 @@ export class ChatView extends ItemView {
         if (event.key === "Escape") {
           event.preventDefault();
           this.mentionSuggestions = [];
-          this.renderMentionSuggestions(suggestionsEl, textarea);
+          this.renderMentionSuggestions(suggestionsEl, textarea, mentionsEl);
           return;
         }
       }
@@ -498,7 +485,7 @@ export class ChatView extends ItemView {
     this.registerDomEvent(textarea, "blur", () => {
       window.setTimeout(() => {
         this.mentionSuggestions = [];
-        this.renderMentionSuggestions(suggestionsEl, textarea);
+        this.renderMentionSuggestions(suggestionsEl, textarea, mentionsEl);
       }, 120);
     });
   }
@@ -522,7 +509,7 @@ export class ChatView extends ItemView {
     if (this.selectedMentionIndex >= this.mentionSuggestions.length) {
       this.selectedMentionIndex = 0;
     }
-    this.renderMentionSuggestions(suggestionsEl, textarea);
+    this.renderMentionSuggestions(suggestionsEl, textarea, mentionsEl);
   }
 
   private getMentionSuggestions(textarea: HTMLTextAreaElement): MentionSuggestion[] {
@@ -537,7 +524,7 @@ export class ChatView extends ItemView {
       .slice(0, 8);
   }
 
-  private renderMentionSuggestions(parent: HTMLElement, textarea: HTMLTextAreaElement): void {
+  private renderMentionSuggestions(parent: HTMLElement, textarea: HTMLTextAreaElement, mentionsEl?: HTMLElement): void {
     parent.empty();
     if (this.mentionSuggestions.length === 0) {
       return;
@@ -552,7 +539,7 @@ export class ChatView extends ItemView {
       this.registerDomEvent(button, "mousedown", (event) => {
         event.preventDefault();
         this.insertMentionSuggestion(textarea, suggestion);
-        this.updateMentionState(textarea, parent.previousElementSibling instanceof HTMLElement ? parent.previousElementSibling : parent, parent);
+        this.updateMentionState(textarea, mentionsEl ?? parent, parent);
       });
     });
   }
@@ -819,95 +806,6 @@ function isChatSearchScopeMode(value: string): value is ChatSearchScopeMode {
   return value === "vault" || value === "current-note" || value === "current-folder";
 }
 
-function parseMentions(content: string, resolvePath: (path: string) => { kind: "note" | "folder"; path: string } | null): ChatMention[] {
-  const mentions: ChatMention[] = [];
-  const seen = new Set<string>();
-  const addMention = (mention: ChatMention) => {
-    const key = `${mention.kind}:${mention.path ?? mention.raw}`;
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    mentions.push(mention);
-  };
-
-  for (const match of content.matchAll(/(^|\s)@current\b/gi)) {
-    addMention({ kind: "current", raw: match[0].trim() });
-  }
-
-  for (const match of content.matchAll(/@\[\[([^\]]+)\]\]/g)) {
-    const rawPath = match[1].split("|")[0].split("#")[0].trim();
-    const resolved = resolvePath(rawPath);
-    if (resolved) {
-      addMention({ kind: resolved.kind, raw: match[0], path: resolved.path });
-    }
-  }
-
-  for (const match of content.matchAll(/(^|\s)@([^\s@[\]]+)/g)) {
-    const raw = match[2].trim().replace(/[),.;:!?]+$/, "");
-    if (!raw || raw.toLocaleLowerCase() === "current") {
-      continue;
-    }
-    const resolved = resolvePath(raw);
-    if (resolved) {
-      addMention({ kind: resolved.kind, raw: `@${raw}`, path: resolved.path });
-    }
-  }
-
-  return mentions.slice(0, 12);
-}
-
-function addMentionInstructions(content: string, mentions: ChatMention[]): string {
-  if (mentions.length === 0) {
-    return content;
-  }
-
-  const instructions = mentions.map((mention) => {
-    if (mention.kind === "current") {
-      return "- @current: call openCurrentNote before answering.";
-    }
-    if (mention.kind === "folder" && mention.path) {
-      return `- ${mention.raw}: call listFolder for "${mention.path}" and use searchNotes within the active scope when needed.`;
-    }
-    if (mention.kind === "note" && mention.path) {
-      return `- ${mention.raw}: call openNote for "${mention.path}" before answering.`;
-    }
-    return `- ${mention.raw}`;
-  });
-
-  return [
-    content,
-    "",
-    "Explicit context mentions:",
-    ...instructions,
-    "Use the mentioned context before answering. If a mentioned file or folder cannot be opened, say so clearly.",
-  ].join("\n");
-}
-
-function formatMention(mention: ChatMention): string {
-  if (mention.kind === "current") {
-    return "@current";
-  }
-  return `@${mention.path ?? mention.raw.replace(/^@/, "")}`;
-}
-
-function getMentionTrigger(content: string, cursor: number): MentionTrigger | null {
-  const beforeCursor = content.slice(0, cursor);
-  const match = beforeCursor.match(/(^|\s)@([^\s@[\]]*)$/);
-  if (!match) {
-    return null;
-  }
-
-  const token = match[0];
-  const leadingWhitespace = token.startsWith("@") ? 0 : 1;
-  const from = cursor - token.length + leadingWhitespace;
-  return {
-    from,
-    to: cursor,
-    query: match[2] ?? "",
-  };
-}
-
 function buildMentionSuggestions(app: App): MentionSuggestion[] {
   const currentFile = app.workspace.getActiveFile();
   const current: MentionSuggestion[] = [
@@ -924,7 +822,6 @@ function buildMentionSuggestions(app: App): MentionSuggestion[] {
     .getFiles()
     .filter((file) => file.extension === "md")
     .sort((a, b) => a.path.localeCompare(b.path))
-    .slice(0, 250)
     .map((file) => ({
       kind: "note" as const,
       label: file.basename,
@@ -937,7 +834,6 @@ function buildMentionSuggestions(app: App): MentionSuggestion[] {
     .getAllLoadedFiles()
     .filter((file): file is TFolder => file instanceof TFolder && file.path.length > 0)
     .sort((a, b) => a.path.localeCompare(b.path))
-    .slice(0, 120)
     .map((folder) => ({
       kind: "folder" as const,
       label: folder.name || folder.path,

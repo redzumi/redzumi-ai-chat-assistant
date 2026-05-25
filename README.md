@@ -11,6 +11,7 @@ AI assistant plugin for working with your Obsidian vault.
 - Model browsing from OpenAI-compatible `/v1/models` endpoints.
 - Local vault indexing across supported text files, Canvas files, and metadata-only attachments.
 - Graph-aware retrieval using note links, backlinks, and neighboring chunks.
+- Related Notes sidebar based on the active note or selected text.
 - Read-only agent tools for searching, opening notes, inspecting links, and reviewing the current note, with clickable source references.
 - Text commands for summarizing selections, extracting action items, and proposing polished rewrites.
 - Saved prompts with Ask/Edit intent, runnable from the command palette against the current selection or note.

@@ -9,6 +9,7 @@ import { GraphSearchEngine } from "./search/graphSearch";
 import { HybridSearchEngine } from "./search/hybridSearch";
 import { AIChatClient } from "./services/aiChatClient";
 import { CHAT_VIEW_TYPE, ChatView } from "./ui/chatView";
+import { RELATED_NOTES_VIEW_TYPE, RelatedNotesView } from "./ui/relatedNotesView";
 import { ObsidianAIAssistantSettingTab } from "./ui/settingsTab";
 
 interface PluginData {
@@ -54,8 +55,25 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
         ),
     );
 
+    this.registerView(
+      RELATED_NOTES_VIEW_TYPE,
+      (leaf: WorkspaceLeaf) =>
+        new RelatedNotesView(
+          leaf,
+          this.indexStore,
+          this.graphSearchEngine,
+          (path) => {
+            void this.startRelatedNoteChat(path);
+          },
+        ),
+    );
+
     this.addRibbonIcon("message-square", "Open Vault Chat Agent", () => {
       void this.activateView();
+    });
+
+    this.addRibbonIcon("network", "Open Related Notes", () => {
+      void this.activateRelatedNotesView();
     });
 
     this.addCommand({
@@ -63,6 +81,14 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
       name: "Open Vault Chat Agent chat",
       callback: () => {
         void this.activateView();
+      },
+    });
+
+    this.addCommand({
+      id: "open-vault-chat-agent-related-notes",
+      name: "Open Vault Chat Agent related notes",
+      callback: () => {
+        void this.activateRelatedNotesView();
       },
     });
 
@@ -160,6 +186,7 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
   onunload(): void {
     this.realtimeIndexer?.stop();
     this.app.workspace.detachLeavesOfType(CHAT_VIEW_TYPE);
+    this.app.workspace.detachLeavesOfType(RELATED_NOTES_VIEW_TYPE);
   }
 
   async loadPluginData(): Promise<void> {
@@ -231,6 +258,33 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     this.app.workspace.revealLeaf(leaf);
     return leaf.view instanceof ChatView ? leaf.view : null;
+  }
+
+  private async activateRelatedNotesView(): Promise<RelatedNotesView | null> {
+    const leaves = this.app.workspace.getLeavesOfType(RELATED_NOTES_VIEW_TYPE);
+    let leaf: WorkspaceLeaf | null = leaves[0] ?? null;
+
+    if (!leaf) {
+      leaf = this.app.workspace.getRightLeaf(false);
+      if (!leaf) {
+        new Notice("Vault Chat Agent: could not open related notes pane.", 4000);
+        return null;
+      }
+      await leaf.setViewState({ type: RELATED_NOTES_VIEW_TYPE, active: true });
+    }
+
+    this.app.workspace.revealLeaf(leaf);
+    const view = leaf.view instanceof RelatedNotesView ? leaf.view : null;
+    await view?.refresh();
+    return view;
+  }
+
+  private async startRelatedNoteChat(path: string): Promise<void> {
+    const view = await this.activateView();
+    if (!view) {
+      return;
+    }
+    view.startTask(`Use openNote on "${path}" first. Then answer: what are the main points in this related note, and why might it be relevant to my current note or selected text? Cite "${path}".`, "ask");
   }
 
   private async runCurrentNoteTask(task: "summarize" | "review" | "tasks" | "improve"): Promise<void> {

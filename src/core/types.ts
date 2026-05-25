@@ -1,4 +1,5 @@
 export type ChatIntent = "ask" | "edit";
+export type ChatRunMode = "direct" | "plan";
 export type ChatSearchScopeMode = "vault" | "current-note" | "current-folder";
 
 export interface ChatSearchScope {
@@ -95,6 +96,7 @@ export interface McpToolDefinition {
 
 export interface McpToolCallContext {
   intent: ChatIntent;
+  runMode?: ChatRunMode;
   searchScope?: ChatSearchScope;
   pendingEdits: Array<Pick<PendingEdit, "id" | "path" | "kind" | "summary">>;
   allowedCapabilities: McpToolCapability[];

@@ -1,5 +1,5 @@
 import { ItemView, MarkdownRenderer, Notice, setIcon, TFolder, WorkspaceLeaf } from "obsidian";
-import { AgentToolExecution, AgentToolExecutor, ChatIntent, ChatSearchScope, ChatSearchScopeMode, DebugLogEntry, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
+import { AgentToolExecution, AgentToolExecutor, ChatIntent, ChatRunMode, ChatSearchScope, ChatSearchScopeMode, DebugLogEntry, PendingEdit, SearchResult, WorkingSetItem } from "../core/types";
 import { ObsidianMcpServer, summarizePendingEdit } from "../mcp/obsidianMcpServer";
 import { AIChatClient } from "../services/aiChatClient";
 
@@ -16,6 +16,7 @@ type PanelId = "edits" | "workingSet" | "sources" | "debug";
 export class ChatView extends ItemView {
   private messages: ChatMessage[] = [];
   private intent: ChatIntent;
+  private runMode: ChatRunMode = "direct";
   private lastSources: SearchResult[] = [];
   private searchScopeMode: ChatSearchScopeMode = "vault";
   private pendingEdits: PendingEdit[] = [];
@@ -66,6 +67,9 @@ export class ChatView extends ItemView {
     }
 
     this.intent = intent;
+    if (intent !== "edit") {
+      this.runMode = "direct";
+    }
     if (searchScopeMode) {
       this.searchScopeMode = searchScopeMode;
     }
@@ -77,6 +81,7 @@ export class ChatView extends ItemView {
 
     const toolbar = this.containerEl.createDiv({ cls: "vault-chat-agent-toolbar" });
     this.renderIntentControl(toolbar);
+    this.renderPlanControl(toolbar);
     this.renderScopeControl(toolbar);
 
     const debugButton = toolbar.createEl("button", {
@@ -161,9 +166,25 @@ export class ChatView extends ItemView {
       button.disabled = this.isSending;
       this.registerDomEvent(button, "click", () => {
         this.intent = item.intent;
+        if (this.intent !== "edit") {
+          this.runMode = "direct";
+        }
         this.render();
       });
     }
+  }
+
+  private renderPlanControl(toolbar: HTMLElement): void {
+    const button = toolbar.createEl("button", {
+      cls: this.runMode === "plan" ? "vault-chat-agent-toolbar-button is-active" : "vault-chat-agent-toolbar-button",
+      text: "Plan",
+      attr: { "aria-label": "Plan before preparing edits" },
+    });
+    button.disabled = this.isSending || this.intent !== "edit";
+    this.registerDomEvent(button, "click", () => {
+      this.runMode = this.runMode === "plan" ? "direct" : "plan";
+      this.render();
+    });
   }
 
   private renderScopeControl(toolbar: HTMLElement): void {
@@ -189,6 +210,9 @@ export class ChatView extends ItemView {
 
   private getEmptyStateText(): string {
     if (this.intent === "edit") {
+      if (this.runMode === "plan") {
+        return "Plan reviewed changes first. The assistant can inspect notes but cannot prepare edits until Plan is off.";
+      }
       return "Ask for reviewed changes. Edits stay pending until you apply them.";
     }
     return "Ask about your vault. The assistant can inspect notes but will not prepare edits.";
@@ -373,7 +397,7 @@ export class ChatView extends ItemView {
     const textarea = inputRow.createEl("textarea", {
       cls: "vault-chat-agent-input",
       attr: {
-        placeholder: this.intent === "edit" ? "Ask for reviewed changes..." : "Ask about your vault...",
+        placeholder: this.intent === "edit" && this.runMode === "plan" ? "Ask for a plan..." : this.intent === "edit" ? "Ask for reviewed changes..." : "Ask about your vault...",
       },
     });
     const sendButton = inputRow.createEl("button", { cls: "mod-cta", attr: { "aria-label": "Send" } });
@@ -427,7 +451,7 @@ export class ChatView extends ItemView {
     this.render();
 
     try {
-      this.statusText = this.intent === "edit" ? "Preparing reviewed changes..." : "Inspecting the vault...";
+      this.statusText = this.intent === "edit" && this.runMode === "plan" ? "Planning reviewed changes..." : this.intent === "edit" ? "Preparing reviewed changes..." : "Inspecting the vault...";
       this.render();
       const searchScope = this.createSearchScope();
       const result = await this.aiChatClient.completeWithAgent(
@@ -443,11 +467,12 @@ export class ChatView extends ItemView {
         },
         {
           intent: this.intent,
+          runMode: this.runMode,
           searchScope,
           pendingEdits: this.pendingEdits.map(summarizePendingEdit),
           allowedCapabilities: [
             "read",
-            ...(this.intent === "edit" ? (["propose_edit"] as const) : []),
+            ...(this.intent === "edit" && this.runMode !== "plan" ? (["propose_edit"] as const) : []),
             ...(allowApplyTools ? (["apply_edit"] as const) : []),
           ],
         },
@@ -589,6 +614,7 @@ export class ChatView extends ItemView {
     return {
       exportedAt: new Date().toISOString(),
       intent: this.intent,
+      runMode: this.runMode,
       isSending: this.isSending,
       messages: this.messages,
       pendingEdits: this.pendingEdits,

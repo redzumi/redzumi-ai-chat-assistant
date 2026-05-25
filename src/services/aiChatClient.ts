@@ -33,6 +33,7 @@ export class AIChatClient {
 
     emitDebug(logDebug, "agent-start", `Started ${intent} request`, {
       intent,
+      runMode: context.runMode ?? "direct",
       userMessage,
       historyLength: history.length,
       context,
@@ -218,8 +219,17 @@ export class AIChatClient {
     const pendingEdits = context.pendingEdits;
     const pendingEditsCanBeApplied = context.allowedCapabilities.includes("apply_edit");
     const searchScope = describeSearchScope(context.searchScope);
+    const isPlanMode = intent === "edit" && context.runMode === "plan";
     const editPolicy =
-      intent === "edit"
+      isPlanMode
+        ? [
+            "You are in Plan mode. You may inspect the vault with read-only tools, but you must not propose edits or create pending edits.",
+            "Before answering, gather the context needed to make a realistic plan.",
+            "Return a concrete plan only. Include files to inspect or change, proposed edits at a high level, risks, and any open questions.",
+            "Do not use wording that implies edits have already been prepared.",
+            "Tell the user to run the next message outside Plan mode when they want pending edits prepared.",
+          ]
+        : intent === "edit"
         ? [
             "You may propose file creation or edits with available edit tools.",
             "You cannot directly apply newly proposed edits. Proposed edits stay pending until the user reviews or explicitly asks to apply them.",

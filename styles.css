@@ -53,6 +53,10 @@
   color: var(--text-accent);
 }
 
+.vault-chat-agent-toolbar-button:disabled {
+  opacity: 0.55;
+}
+
 .vault-chat-agent-messages {
   display: flex;
   flex: 1;

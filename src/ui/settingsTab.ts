@@ -1,5 +1,5 @@
 import { App, Notice, PluginSettingTab, Setting, SuggestModal } from "obsidian";
-import { DEFAULT_SETTINGS } from "../core/types";
+import { DEFAULT_SETTINGS, SavedPrompt } from "../core/types";
 import ObsidianAIAssistantPlugin from "../main";
 
 const PROVIDER_PRESETS = {
@@ -197,6 +197,79 @@ export class ObsidianAIAssistantSettingTab extends PluginSettingTab {
         }),
       );
 
+    containerEl.createEl("h3", { text: "Saved prompts" });
+    containerEl.createEl("p", {
+      cls: "setting-item-description",
+      text: "Reusable prompts for the Prompt: run saved prompt command. Edit prompts can propose reviewed patches; Ask prompts only answer in chat.",
+    });
+
+    new Setting(containerEl)
+      .setName("Add saved prompt")
+      .setDesc("Create a prompt that can be run from the command palette.")
+      .addButton((button) =>
+        button
+          .setButtonText("Add prompt")
+          .setCta()
+          .onClick(async () => {
+            this.plugin.settings.savedPrompts = [
+              ...this.plugin.settings.savedPrompts,
+              createSavedPrompt(),
+            ];
+            await this.plugin.savePluginData();
+            this.display();
+          }),
+      );
+
+    for (const prompt of this.plugin.settings.savedPrompts) {
+      new Setting(containerEl)
+        .setName("Saved prompt")
+        .setDesc(prompt.id)
+        .addText((text) =>
+          text
+            .setPlaceholder("Prompt title")
+            .setValue(prompt.title)
+            .onChange(async (value) => {
+              prompt.title = value;
+              await this.plugin.savePluginData();
+            }),
+        )
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("ask", "Ask")
+            .addOption("edit", "Edit")
+            .setValue(prompt.intent)
+            .onChange(async (value) => {
+              prompt.intent = value === "edit" ? "edit" : "ask";
+              await this.plugin.savePluginData();
+            }),
+        )
+        .addButton((button) =>
+          button
+            .setButtonText("Delete")
+            .setWarning()
+            .onClick(async () => {
+              this.plugin.settings.savedPrompts = this.plugin.settings.savedPrompts.filter((item) => item.id !== prompt.id);
+              await this.plugin.savePluginData();
+              this.display();
+            }),
+        );
+
+      new Setting(containerEl)
+        .setName("Prompt text")
+        .setDesc("Instructions to run against the current selection or active note.")
+        .addTextArea((text) => {
+          text.inputEl.rows = 4;
+          text.inputEl.addClass("vault-chat-agent-saved-prompt-input");
+          text
+            .setPlaceholder("Example: Rewrite this as concise meeting notes.")
+            .setValue(prompt.prompt)
+            .onChange(async (value) => {
+              prompt.prompt = value;
+              await this.plugin.savePluginData();
+            });
+        });
+    }
+
     containerEl.createEl("h3", { text: "Index" });
     const coverage = this.plugin.getIndexCoverage();
     containerEl.createEl("p", {
@@ -229,6 +302,15 @@ export class ObsidianAIAssistantSettingTab extends PluginSettingTab {
           }),
       );
   }
+}
+
+function createSavedPrompt(): SavedPrompt {
+  return {
+    id: `prompt:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    title: "New prompt",
+    prompt: "",
+    intent: "ask",
+  };
 }
 
 class ModelPickerModal extends SuggestModal<string> {

@@ -126,6 +126,25 @@
   resize: vertical;
 }
 
+.vault-chat-agent-saved-prompt-input {
+  min-height: 84px;
+  min-width: min(520px, 100%);
+  resize: vertical;
+}
+
+.vault-chat-agent-suggest-title {
+  color: var(--text-normal);
+  font-weight: 600;
+}
+
+.vault-chat-agent-suggest-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .vault-chat-agent-panel {
   border-top: 1px solid var(--background-modifier-border);
 }

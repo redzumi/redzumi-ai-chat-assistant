@@ -1,8 +1,8 @@
-import { Notice, Plugin, WorkspaceLeaf } from "obsidian";
+import { App, Editor, MarkdownFileInfo, MarkdownView, Notice, Plugin, SuggestModal, WorkspaceLeaf } from "obsidian";
 import { ObsidianAgentTools } from "./agent/obsidianTools";
 import { SemanticChunker } from "./core/chunker";
 import { IndexStore } from "./core/indexStore";
-import { ChatIntent, DEFAULT_SETTINGS, ObsidianAIAssistantSettings, IndexCoverage, PersistedIndex } from "./core/types";
+import { ChatIntent, DEFAULT_SETTINGS, ObsidianAIAssistantSettings, IndexCoverage, PersistedIndex, SavedPrompt } from "./core/types";
 import { indexVaultFiles } from "./indexing/indexAll";
 import { RealtimeIndexer } from "./indexing/realtimeIndexer";
 import { GraphSearchEngine } from "./search/graphSearch";
@@ -103,6 +103,46 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
       name: "Vault Chat Agent: propose improvements to current note",
       callback: () => {
         void this.runCurrentNoteTask("improve");
+      },
+    });
+
+    this.addCommand({
+      id: "text-summarize-selection-vault-chat-agent",
+      name: "Text: summarize selection with Vault Chat Agent",
+      editorCallback: (editor, ctx) => {
+        void this.runEditorTextTask(editor, ctx, "summarize");
+      },
+    });
+
+    this.addCommand({
+      id: "text-professional-selection-vault-chat-agent",
+      name: "Text: make selection professional with Vault Chat Agent",
+      editorCallback: (editor, ctx) => {
+        void this.runEditorTextTask(editor, ctx, "professional");
+      },
+    });
+
+    this.addCommand({
+      id: "text-action-items-selection-vault-chat-agent",
+      name: "Text: extract action items from selection with Vault Chat Agent",
+      editorCallback: (editor, ctx) => {
+        void this.runEditorTextTask(editor, ctx, "action-items");
+      },
+    });
+
+    this.addCommand({
+      id: "text-edit-selection-vault-chat-agent",
+      name: "Text: edit selection with prompt using Vault Chat Agent",
+      editorCallback: (editor, ctx) => {
+        void this.runSavedPrompt(editor, ctx, "edit");
+      },
+    });
+
+    this.addCommand({
+      id: "prompt-run-saved-vault-chat-agent",
+      name: "Prompt: run saved prompt with Vault Chat Agent",
+      editorCallback: (editor, ctx) => {
+        void this.runSavedPrompt(editor, ctx);
       },
     });
 
@@ -208,6 +248,33 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
     view.startTask(this.buildCurrentNotePrompt(task, file.path), this.getCurrentNoteTaskIntent(task));
   }
 
+  private async runEditorTextTask(editor: Editor, ctx: MarkdownView | MarkdownFileInfo, task: "summarize" | "professional" | "action-items"): Promise<void> {
+    const view = await this.activateView();
+    if (!view) {
+      return;
+    }
+
+    const prompt = this.buildEditorTextPrompt(editor, ctx, task);
+    view.startTask(prompt, task === "professional" ? "edit" : "ask");
+  }
+
+  private async runSavedPrompt(editor: Editor, ctx: MarkdownView | MarkdownFileInfo, forcedIntent?: ChatIntent): Promise<void> {
+    const prompts = this.settings.savedPrompts.filter((prompt) => prompt.title.trim() && prompt.prompt.trim());
+    if (prompts.length === 0) {
+      new Notice("Vault Chat Agent: add a saved prompt in settings first.", 4000);
+      return;
+    }
+
+    new SavedPromptPickerModal(this.app, prompts, async (savedPrompt) => {
+      const view = await this.activateView();
+      if (!view) {
+        return;
+      }
+      const intent = forcedIntent ?? savedPrompt.intent;
+      view.startTask(this.buildSavedPromptMessage(editor, ctx, savedPrompt, intent), intent);
+    }).open();
+  }
+
   private getCurrentNoteTaskIntent(task: "summarize" | "review" | "tasks" | "improve"): ChatIntent {
     return task === "improve" ? "edit" : "ask";
   }
@@ -224,6 +291,73 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
         return `Propose improvements to current note: ${path}\n\nUse openNote on "${path}" first. Treat it as the current note. Propose concrete improvements to this note. If small text edits are useful, use proposePatch or proposePatchBatch so I can review them before applying.`;
     }
   }
+
+  private buildEditorTextPrompt(editor: Editor, ctx: MarkdownView | MarkdownFileInfo, task: "summarize" | "professional" | "action-items"): string {
+    const path = getEditorPath(ctx) ?? this.app.workspace.getActiveFile()?.path ?? "";
+    const selection = editor.getSelection().trim();
+    const target = selection ? "selected text" : "current note";
+    const contentBlock = selection ? `\n\nSelected text:\n\n${selection}` : "";
+    const noteInstruction = path ? `Use openNote on "${path}" if you need surrounding context. Cite "${path}" in the response.` : "Use the active note if you need surrounding context.";
+
+    switch (task) {
+      case "summarize":
+        return `Summarize the ${target} clearly and preserve the important details.\n\n${noteInstruction}${contentBlock}`;
+      case "action-items":
+        return `Extract actionable tasks from the ${target}. Group them by urgency or owner when the text supports it. Do not edit the file.\n\n${noteInstruction}${contentBlock}`;
+      case "professional":
+        return selection && path
+          ? `Rewrite the selected text in a more professional, polished tone. Use openNote on "${path}" first, then proposePatch replacing exactly the selected text below. Keep the meaning intact.\n\nSelected text:\n\n${selection}`
+          : `Review the current note and propose small patch edits that make the writing more professional and polished.\n\n${noteInstruction}`;
+    }
+  }
+
+  private buildSavedPromptMessage(editor: Editor, ctx: MarkdownView | MarkdownFileInfo, savedPrompt: SavedPrompt, intent: ChatIntent): string {
+    const path = getEditorPath(ctx) ?? this.app.workspace.getActiveFile()?.path ?? "";
+    const selection = editor.getSelection().trim();
+    const context = selection
+      ? `Selected text:\n\n${selection}`
+      : path
+        ? `No text is selected. Use openNote on "${path}" and treat it as the target note.`
+        : "No text is selected and no active note path is available.";
+    const editInstruction =
+      intent === "edit" && selection && path
+        ? `\n\nIf you edit the selected text, use proposePatch on "${path}" and replace exactly the selected text.`
+        : "";
+
+    return [`Run saved prompt: ${savedPrompt.title}`, savedPrompt.prompt, context + editInstruction].join("\n\n");
+  }
+}
+
+class SavedPromptPickerModal extends SuggestModal<SavedPrompt> {
+  constructor(
+    app: App,
+    private readonly prompts: SavedPrompt[],
+    private readonly onChoose: (prompt: SavedPrompt) => Promise<void>,
+  ) {
+    super(app);
+    this.setPlaceholder("Search saved prompts...");
+  }
+
+  getSuggestions(query: string): SavedPrompt[] {
+    const normalized = query.trim().toLocaleLowerCase();
+    if (!normalized) {
+      return this.prompts.slice(0, 50);
+    }
+    return this.prompts.filter((prompt) => `${prompt.title}\n${prompt.prompt}`.toLocaleLowerCase().includes(normalized)).slice(0, 50);
+  }
+
+  renderSuggestion(prompt: SavedPrompt, el: HTMLElement): void {
+    el.createDiv({ cls: "vault-chat-agent-suggest-title", text: prompt.title });
+    el.createDiv({ cls: "vault-chat-agent-suggest-note", text: `${prompt.intent === "edit" ? "Edit" : "Ask"} · ${prompt.prompt.slice(0, 120)}` });
+  }
+
+  onChooseSuggestion(prompt: SavedPrompt): void {
+    void this.onChoose(prompt);
+  }
+}
+
+function getEditorPath(ctx: MarkdownView | MarkdownFileInfo): string | undefined {
+  return ctx.file?.path;
 }
 
 function migrateSettings(settings: PluginData["settings"]): ObsidianAIAssistantSettings {

@@ -6,6 +6,13 @@ export interface ChatSearchScope {
   path?: string;
 }
 
+export interface SavedPrompt {
+  id: string;
+  title: string;
+  prompt: string;
+  intent: ChatIntent;
+}
+
 export interface ObsidianAIAssistantSettings {
   apiKey: string;
   model: string;
@@ -17,6 +24,7 @@ export interface ObsidianAIAssistantSettings {
   defaultIntent: ChatIntent;
   systemPrompt: string;
   stripReasoningBlocks: boolean;
+  savedPrompts: SavedPrompt[];
 }
 
 export interface DebugLogEntry {
@@ -149,5 +157,6 @@ export const DEFAULT_SETTINGS: ObsidianAIAssistantSettings = {
   realtimeIndexing: true,
   defaultIntent: "ask",
   stripReasoningBlocks: true,
+  savedPrompts: [],
   systemPrompt: "Assume the user is not a developer. Explain technical details in plain language, avoid unnecessary implementation jargon, and ask before expecting them to make code-level decisions.",
 };

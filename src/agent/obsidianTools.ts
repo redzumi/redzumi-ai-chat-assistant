@@ -2,6 +2,7 @@ import { App, TFile, TFolder } from "obsidian";
 import { AgentToolExecution, ChatSearchScope, IndexedChunk, McpToolCallContext, PendingEdit } from "../core/types";
 import { IndexStore } from "../core/indexStore";
 import { GraphSearchEngine } from "../search/graphSearch";
+import { countOccurrences, createPatchEdit, createSequentialPatchEdits, validatePatch } from "./pendingEditUtils";
 
 const READABLE_EXTENSIONS = new Set(["md", "txt", "csv", "json", "canvas"]);
 const MAX_NEW_NOTE_CHUNK_CHARS = 2500;
@@ -532,7 +533,7 @@ export class ObsidianAgentTools {
       pendingInputs.push({ path: file.path, summary: patchSummary, originalContent, find, replace });
     }
 
-    const pendingEdits = pendingInputs.map((patch) => createPatchEdit(patch.path, patch.summary, patch.originalContent, patch.find, patch.replace));
+    const pendingEdits = createSequentialPatchEdits(pendingInputs);
     return {
       pendingEdits,
       workingSetItems: unique(pendingEdits.map((edit) => edit.path)).map((path) => ({
@@ -653,48 +654,6 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
 }
 
-function createPatchEdit(path: string, summary: string, originalContent: string, find: string, replace: string): PendingEdit {
-  return {
-    id: `${path}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
-    path,
-    kind: "patch",
-    summary,
-    originalContent,
-    newContent: originalContent.replace(find, replace),
-    find,
-    replace,
-    createdAt: Date.now(),
-  };
-}
-
-function validatePatch(content: string, find: string, path: string, index?: number): string | null {
-  const matchCount = countOccurrences(content, find);
-  if (matchCount === 1) {
-    return null;
-  }
-
-  const prefix = index ? `Patch batch rejected at patch ${index} for ${path}.` : `Patch rejected for ${path}.`;
-  return [
-    prefix,
-    `The find text matched ${matchCount} times; it must match exactly once.`,
-    "Open the file and propose a more specific find block.",
-  ].join("\n");
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function countOccurrences(content: string, needle: string): number {
-  let count = 0;
-  let index = 0;
-  while (index <= content.length) {
-    const found = content.indexOf(needle, index);
-    if (found === -1) {
-      break;
-    }
-    count += 1;
-    index = found + needle.length;
-  }
-  return count;
 }

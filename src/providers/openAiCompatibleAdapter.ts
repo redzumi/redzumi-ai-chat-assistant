@@ -6,17 +6,21 @@ export class OpenAiCompatibleAdapter implements ChatProviderAdapter {
 
   createRequest(settings: ObsidianAIAssistantSettings, messages: ProviderMessage[], tools: McpToolDefinition[], maxTokens: number): ProviderRequest {
     const url = `${settings.apiBaseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+    const body: Record<string, unknown> = {
+      model: settings.model,
+      messages: messages.map(toOpenAiMessage),
+      tools: tools.map(toOpenAiTool),
+      temperature: 0.2,
+      max_tokens: maxTokens,
+      stream: false,
+    };
+    if (supportsToolChoice(settings.apiBaseUrl)) {
+      body.tool_choice = "auto";
+    }
+
     return {
       url,
-      body: {
-        model: settings.model,
-        messages: messages.map(toOpenAiMessage),
-        tools: tools.map(toOpenAiTool),
-        tool_choice: "auto",
-        temperature: 0.2,
-        max_tokens: maxTokens,
-        stream: false,
-      },
+      body,
     };
   }
 
@@ -36,6 +40,9 @@ export class OpenAiCompatibleAdapter implements ChatProviderAdapter {
     }
 
     const content = typeof message.content === "string" ? message.content : "";
+    const reasoning = typeof message.reasoning === "string" ? message.reasoning : undefined;
+    const reasoningContent = typeof message.reasoning_content === "string" ? message.reasoning_content : undefined;
+    const reasoningDetails = message.reasoning_details;
     const toolCalls = Array.isArray(message.tool_calls)
       ? message.tool_calls.flatMap((toolCall) => {
           if (!isRecord(toolCall) || typeof toolCall.id !== "string" || !isRecord(toolCall.function)) {
@@ -52,6 +59,9 @@ export class OpenAiCompatibleAdapter implements ChatProviderAdapter {
 
     return {
       content,
+      reasoning,
+      reasoningContent,
+      reasoningDetails,
       toolCalls,
       raw: message,
     };
@@ -60,7 +70,7 @@ export class OpenAiCompatibleAdapter implements ChatProviderAdapter {
 
 function toOpenAiMessage(message: ProviderMessage): Record<string, unknown> {
   if (message.role === "assistant") {
-    return {
+    const providerMessage: Record<string, unknown> = {
       role: "assistant",
       content: message.content,
       tool_calls: message.toolCalls?.map((toolCall) => ({
@@ -72,6 +82,16 @@ function toOpenAiMessage(message: ProviderMessage): Record<string, unknown> {
         },
       })),
     };
+    if (message.reasoningContent !== undefined) {
+      providerMessage.reasoning_content = message.reasoningContent;
+    }
+    if (message.reasoning !== undefined) {
+      providerMessage.reasoning = message.reasoning;
+    }
+    if (message.reasoningDetails !== undefined) {
+      providerMessage.reasoning_details = message.reasoningDetails;
+    }
+    return providerMessage;
   }
 
   if (message.role === "tool") {
@@ -97,6 +117,15 @@ function toOpenAiTool(tool: McpToolDefinition): Record<string, unknown> {
       parameters: tool.inputSchema,
     },
   };
+}
+
+function supportsToolChoice(apiBaseUrl: string): boolean {
+  try {
+    const url = new URL(apiBaseUrl);
+    return !(["localhost", "127.0.0.1", "0.0.0.0"].includes(url.hostname) && url.port === "11434");
+  } catch {
+    return true;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

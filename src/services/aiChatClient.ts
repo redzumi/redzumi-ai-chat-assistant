@@ -60,6 +60,9 @@ export class AIChatClient {
       messages.push({
         role: "assistant",
         content: assistantMessage.content || null,
+        reasoning: assistantMessage.reasoning,
+        reasoningContent: assistantMessage.reasoningContent,
+        reasoningDetails: assistantMessage.reasoningDetails,
         toolCalls,
       });
 

@@ -8,6 +8,9 @@ export interface ProviderToolCall {
 
 export interface ProviderAssistantMessage {
   content: string;
+  reasoning?: string;
+  reasoningContent?: string;
+  reasoningDetails?: unknown;
   toolCalls: ProviderToolCall[];
   raw: unknown;
 }
@@ -15,6 +18,9 @@ export interface ProviderAssistantMessage {
 export interface ProviderMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
+  reasoning?: string;
+  reasoningContent?: string;
+  reasoningDetails?: unknown;
   toolCallId?: string;
   toolCalls?: ProviderToolCall[];
 }

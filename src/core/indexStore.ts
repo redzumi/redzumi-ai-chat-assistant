@@ -34,6 +34,16 @@ export class IndexStore {
     this.chunks = this.chunks.filter((chunk) => chunk.filePath !== filePath);
   }
 
+  deleteFolder(folderPath: string): void {
+    const normalized = folderPath.replace(/\/+$/, "");
+    if (!normalized) {
+      this.clear();
+      return;
+    }
+    this.documents = this.documents.filter((document) => !isPathInFolder(document.path, normalized));
+    this.chunks = this.chunks.filter((chunk) => !isPathInFolder(chunk.filePath, normalized));
+  }
+
   getCoverage(): IndexCoverage {
     return {
       totalFiles: this.documents.length,
@@ -80,4 +90,8 @@ export class IndexStore {
       updatedAt: Date.now(),
     };
   }
+}
+
+function isPathInFolder(path: string, folderPath: string): boolean {
+  return path === folderPath || path.startsWith(`${folderPath}/`);
 }

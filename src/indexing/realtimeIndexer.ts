@@ -1,4 +1,4 @@
-import { EventRef, MetadataCache, TAbstractFile, TFile, Vault } from "obsidian";
+import { EventRef, MetadataCache, TAbstractFile, TFile, TFolder, Vault } from "obsidian";
 import { SemanticChunker } from "../core/chunker";
 import { IndexStore } from "../core/indexStore";
 import { indexVaultFile } from "./indexAll";
@@ -45,6 +45,16 @@ export class RealtimeIndexer {
 
     this.registerEvent(
       this.vault.on("rename", (file, oldPath) => {
+        this.clearScheduledIndexes(oldPath);
+        if (file instanceof TFolder) {
+          this.indexStore.deleteFolder(oldPath);
+          for (const child of collectFolderFiles(file)) {
+            this.scheduleIndex(child);
+          }
+          void this.persistAndNotify();
+          return;
+        }
+
         this.indexStore.deleteFile(oldPath);
         if (file instanceof TFile) {
           this.scheduleIndex(file);
@@ -80,16 +90,43 @@ export class RealtimeIndexer {
   }
 
   private handleDelete(file: TAbstractFile): void {
-    if (!(file instanceof TFile)) {
+    this.clearScheduledIndexes(file.path);
+    if (file instanceof TFolder) {
+      this.indexStore.deleteFolder(file.path);
+      void this.persistAndNotify();
       return;
     }
 
-    this.indexStore.deleteFile(file.path);
-    void this.persistAndNotify();
+    if (file instanceof TFile) {
+      this.indexStore.deleteFile(file.path);
+      void this.persistAndNotify();
+    }
   }
 
   private async persistAndNotify(): Promise<void> {
     await this.persist();
     this.onUpdate();
   }
+
+  private clearScheduledIndexes(path: string): void {
+    const folderPrefix = `${path.replace(/\/+$/, "")}/`;
+    for (const [filePath, timerId] of this.timers.entries()) {
+      if (filePath === path || filePath.startsWith(folderPrefix)) {
+        window.clearTimeout(timerId);
+        this.timers.delete(filePath);
+      }
+    }
+  }
+}
+
+function collectFolderFiles(folder: TFolder): TFile[] {
+  const files: TFile[] = [];
+  for (const child of folder.children) {
+    if (child instanceof TFile) {
+      files.push(child);
+    } else if (child instanceof TFolder) {
+      files.push(...collectFolderFiles(child));
+    }
+  }
+  return files;
 }

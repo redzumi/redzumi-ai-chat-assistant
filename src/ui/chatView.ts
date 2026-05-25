@@ -101,23 +101,23 @@ export class ChatView extends ItemView {
       attr: { "aria-label": "Show debug log" },
     });
     setIcon(debugButton, "bug");
-    this.registerDomEvent(debugButton, "click", () => {
+    debugButton.onclick = () => {
       this.expandedPanels.debug = !this.expandedPanels.debug;
       this.render();
-    });
+    };
 
     const exportButton = toolbar.createEl("button", { cls: "vault-chat-agent-toolbar-button", attr: { "aria-label": "Export chat debug data" } });
     setIcon(exportButton, "download");
-    this.registerDomEvent(exportButton, "click", () => {
+    exportButton.onclick = () => {
       void this.exportDebugData().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(message, 6000);
       });
-    });
+    };
 
     const clearButton = toolbar.createEl("button", { attr: { "aria-label": "Clear chat" } });
     setIcon(clearButton, "trash-2");
-    this.registerDomEvent(clearButton, "click", () => {
+    clearButton.onclick = () => {
       this.messages = [];
       this.lastSources = [];
       this.pendingEdits = [];
@@ -126,7 +126,7 @@ export class ChatView extends ItemView {
       this.workingSet = [];
       this.debugLogs = [];
       this.render();
-    });
+    };
 
     const messagesEl = this.containerEl.createDiv({ cls: "vault-chat-agent-messages" });
     if (this.messages.length === 0) {
@@ -178,13 +178,13 @@ export class ChatView extends ItemView {
         attr: { "aria-label": item.description },
       });
       button.disabled = this.isSending;
-      this.registerDomEvent(button, "click", () => {
+      button.onclick = () => {
         this.intent = item.intent;
         if (this.intent !== "edit") {
           this.runMode = "direct";
         }
         this.render();
-      });
+      };
     }
   }
 
@@ -195,10 +195,10 @@ export class ChatView extends ItemView {
       attr: { "aria-label": "Plan before preparing edits" },
     });
     button.disabled = this.isSending || this.intent !== "edit";
-    this.registerDomEvent(button, "click", () => {
+    button.onclick = () => {
       this.runMode = this.runMode === "plan" ? "direct" : "plan";
       this.render();
-    });
+    };
   }
 
   private renderScopeControl(toolbar: HTMLElement): void {
@@ -216,10 +216,10 @@ export class ChatView extends ItemView {
     }
     scopeSelect.value = this.searchScopeMode;
     scopeSelect.disabled = this.isSending;
-    this.registerDomEvent(scopeSelect, "change", () => {
+    scopeSelect.onchange = () => {
       this.searchScopeMode = isChatSearchScopeMode(scopeSelect.value) ? scopeSelect.value : "vault";
       this.render();
-    });
+    };
   }
 
   private getEmptyStateText(): string {
@@ -258,9 +258,9 @@ export class ChatView extends ItemView {
     for (const result of this.lastSources) {
       const sourceEl = body.createDiv({ cls: "vault-chat-agent-source" });
       const title = sourceEl.createEl("button", { cls: "vault-chat-agent-source-title", text: result.chunk.filePath });
-      this.registerDomEvent(title, "click", () => {
+      title.onclick = () => {
         void this.app.workspace.openLinkText(result.chunk.filePath, "", false);
-      });
+      };
       sourceEl.createDiv({ cls: "vault-chat-agent-source-score", text: `Score ${result.score.toFixed(3)}` });
       sourceEl.createDiv({
         cls: "vault-chat-agent-source-snippet",
@@ -279,13 +279,13 @@ export class ChatView extends ItemView {
     const applyAllButton = batchActions.createEl("button", { cls: "mod-cta", text: "Apply all" });
     const rejectAllButton = batchActions.createEl("button", { text: "Reject all" });
     applyAllButton.disabled = this.isSending;
-    this.registerDomEvent(applyAllButton, "click", () => {
+    applyAllButton.onclick = () => {
       void this.applyAllPendingEdits();
-    });
-    this.registerDomEvent(rejectAllButton, "click", () => {
+    };
+    rejectAllButton.onclick = () => {
       this.pendingEdits = [];
       this.render();
-    });
+    };
 
     for (const edit of this.pendingEdits) {
       const editEl = body.createDiv({ cls: "vault-chat-agent-edit" });
@@ -312,16 +312,16 @@ export class ChatView extends ItemView {
       const rejectButton = actions.createEl("button", { text: "Reject" });
       applyButton.disabled = this.isSending;
 
-      this.registerDomEvent(openButton, "click", () => {
+      openButton.onclick = () => {
         void this.app.workspace.openLinkText(edit.path, "", false);
-      });
-      this.registerDomEvent(applyButton, "click", () => {
+      };
+      applyButton.onclick = () => {
         void this.applyPendingEdit(edit);
-      });
-      this.registerDomEvent(rejectButton, "click", () => {
+      };
+      rejectButton.onclick = () => {
         this.pendingEdits = this.pendingEdits.filter((pending) => pending.id !== edit.id);
         this.render();
-      });
+      };
     }
   }
 
@@ -351,10 +351,10 @@ export class ChatView extends ItemView {
     });
     setIcon(header, this.expandedPanels[panelId] ? "chevron-down" : "chevron-right");
     header.createSpan({ text: title });
-    this.registerDomEvent(header, "click", () => {
+    header.onclick = () => {
       this.expandedPanels[panelId] = !this.expandedPanels[panelId];
       this.render();
-    });
+    };
 
     if (!this.expandedPanels[panelId]) {
       return null;
@@ -375,18 +375,18 @@ export class ChatView extends ItemView {
     copyButton.disabled = this.debugLogs.length === 0 && this.messages.length === 0;
     exportButton.disabled = copyButton.disabled;
 
-    this.registerDomEvent(copyButton, "click", () => {
+    copyButton.onclick = () => {
       void this.copyDebugData().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(message, 6000);
       });
-    });
-    this.registerDomEvent(exportButton, "click", () => {
+    };
+    exportButton.onclick = () => {
       void this.exportDebugData().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(message, 6000);
       });
-    });
+    };
 
     body.createDiv({
       cls: "setting-item-description",
@@ -430,9 +430,9 @@ export class ChatView extends ItemView {
       applyPermissionInput.checked = this.allowApplyToolsForNextMessage;
       applyPermissionInput.disabled = this.isSending;
       applyPermissionLabel.createSpan({ text: "Allow apply" });
-      this.registerDomEvent(applyPermissionInput, "change", () => {
+      applyPermissionInput.onchange = () => {
         this.allowApplyToolsForNextMessage = applyPermissionInput.checked;
-      });
+      };
     }
 
     const send = () => {
@@ -443,11 +443,11 @@ export class ChatView extends ItemView {
       void this.sendMessage(value);
     };
 
-    this.registerDomEvent(sendButton, "click", send);
-    this.registerDomEvent(stopButton, "click", () => {
+    sendButton.onclick = send;
+    stopButton.onclick = () => {
       this.abortController?.abort();
-    });
-    this.registerDomEvent(textarea, "keydown", (event) => {
+    };
+    textarea.onkeydown = (event) => {
       if (this.mentionSuggestions.length > 0) {
         if (event.key === "ArrowDown") {
           event.preventDefault();
@@ -478,16 +478,16 @@ export class ChatView extends ItemView {
         event.preventDefault();
         send();
       }
-    });
-    this.registerDomEvent(textarea, "input", () => {
+    };
+    textarea.oninput = () => {
       this.updateMentionState(textarea, mentionsEl, suggestionsEl);
-    });
-    this.registerDomEvent(textarea, "blur", () => {
+    };
+    textarea.onblur = () => {
       window.setTimeout(() => {
         this.mentionSuggestions = [];
         this.renderMentionSuggestions(suggestionsEl, textarea, mentionsEl);
       }, 120);
-    });
+    };
   }
 
   private renderDraftMentions(parent: HTMLElement): void {
@@ -536,11 +536,11 @@ export class ChatView extends ItemView {
       });
       button.createSpan({ cls: "vault-chat-agent-mention-suggestion-label", text: suggestion.label });
       button.createSpan({ cls: "vault-chat-agent-mention-suggestion-detail", text: suggestion.detail });
-      this.registerDomEvent(button, "mousedown", (event) => {
+      button.onmousedown = (event) => {
         event.preventDefault();
         this.insertMentionSuggestion(textarea, suggestion);
         this.updateMentionState(textarea, mentionsEl ?? parent, parent);
-      });
+      };
     });
   }
 

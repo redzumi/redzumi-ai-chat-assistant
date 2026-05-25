@@ -17,6 +17,7 @@ export class RelatedNotesView extends ItemView {
   private results: RelatedNoteResult[] = [];
   private statusText = "";
   private refreshTimer: number | null = null;
+  private refreshVersion = 0;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -54,6 +55,7 @@ export class RelatedNotesView extends ItemView {
   }
 
   async refresh(): Promise<void> {
+    const version = ++this.refreshVersion;
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const activeFile = activeView?.file ?? this.app.workspace.getActiveFile();
     if (!activeFile) {
@@ -64,6 +66,9 @@ export class RelatedNotesView extends ItemView {
     }
 
     const query = await this.buildRelatedQuery(activeView, activeFile);
+    if (version !== this.refreshVersion) {
+      return;
+    }
     if (!query.trim()) {
       this.results = [];
       this.statusText = "No indexed content is available for this note.";
@@ -74,6 +79,9 @@ export class RelatedNotesView extends ItemView {
     const sourceLabel = activeView?.editor.getSelection().trim() ? "selection" : activeFile.path;
     this.statusText = `Related to ${sourceLabel}`;
     const rawResults = this.searchEngine.search(query, 32, (chunk) => chunk.filePath !== activeFile.path);
+    if (version !== this.refreshVersion) {
+      return;
+    }
     this.results = groupRelatedResults(rawResults).slice(0, 12);
     this.render();
   }
@@ -98,12 +106,12 @@ export class RelatedNotesView extends ItemView {
       attr: { "aria-label": "Refresh related notes" },
     });
     setIcon(refreshButton, "refresh-cw");
-    this.registerDomEvent(refreshButton, "click", () => {
+    refreshButton.onclick = () => {
       void this.refresh().catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
         new Notice(message, 6000);
       });
-    });
+    };
 
     this.containerEl.createDiv({ cls: "vault-chat-agent-related-status", text: this.statusText });
 
@@ -120,15 +128,15 @@ export class RelatedNotesView extends ItemView {
       const item = body.createDiv({ cls: "vault-chat-agent-related-item" });
       const header = item.createDiv({ cls: "vault-chat-agent-related-item-header" });
       const openButton = header.createEl("button", { cls: "vault-chat-agent-related-path", text: result.path });
-      this.registerDomEvent(openButton, "click", () => {
+      openButton.onclick = () => {
         void this.app.workspace.openLinkText(result.path, "", false);
-      });
+      };
       header.createSpan({ cls: "vault-chat-agent-related-score", text: result.score.toFixed(3) });
       const actions = item.createDiv({ cls: "vault-chat-agent-related-actions" });
       const chatButton = actions.createEl("button", { text: "Ask about this note" });
-      this.registerDomEvent(chatButton, "click", () => {
+      chatButton.onclick = () => {
         this.startChatForNote(result.path);
-      });
+      };
       item.createDiv({
         cls: "vault-chat-agent-related-meta",
         text: `${result.matches} ${result.matches === 1 ? "match" : "matches"}`,

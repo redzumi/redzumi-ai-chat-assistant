@@ -81,6 +81,7 @@ const READ_ONLY_TOOLS: McpToolDefinition[] = [
       {
         query: { type: "string", description: "Search query." },
         topK: { type: "number", description: "Maximum number of chunks to return." },
+        folder: { type: "string", description: "Optional vault-relative folder path to search within." },
       },
       ["query"],
     ),

@@ -44,7 +44,7 @@ test("addMentionInstructions keeps visible content and adds tool instructions", 
       "Explicit context mentions:",
       "- @current: call openCurrentNote before answering.",
       '- @[[Current Project]]: call openNote for "Projects/Current Project.md" before answering.',
-      '- @Projects/: call listFolder for "Projects" and use searchNotes within the active scope when needed.',
+      '- @Projects/: call listFolder for "Projects" and call searchNotes with folder="Projects" when searching this folder.',
       "Use the mentioned context before answering. If a mentioned file or folder cannot be opened, say so clearly.",
     ].join("\n"),
   );

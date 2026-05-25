@@ -247,7 +247,11 @@ export class AIChatClient {
 
     return [
       "You are an AI agent inside Obsidian.",
-      intent === "edit" ? "You can inspect the user's vault and propose reviewed file edits with tools before answering." : "You can inspect the user's vault with read-only tools before answering.",
+      isPlanMode
+        ? "You can inspect the user's vault with read-only tools before returning a plan."
+        : intent === "edit"
+          ? "You can inspect the user's vault and propose reviewed file edits with tools before answering."
+          : "You can inspect the user's vault with read-only tools before answering.",
       "Use tools when the answer needs more context than the current conversation.",
       searchScope ? `Current search scope: ${searchScope}. Keep searchNotes results within this scope unless the user explicitly asks to broaden it.` : "",
       "Cite file paths when using vault content.",

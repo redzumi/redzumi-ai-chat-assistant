@@ -129,10 +129,10 @@ export class SemanticChunker {
           endOffset: absoluteStart + end,
         });
       }
-      cursor = Math.max(end - this.overlapChars, end);
       if (end === text.length) {
         break;
       }
+      cursor = this.overlapChars > 0 ? Math.max(cursor + 1, end - this.overlapChars) : end;
     }
 
     return chunks;

@@ -65,7 +65,7 @@ export function addMentionInstructions(content: string, mentions: ChatMention[])
       return "- @current: call openCurrentNote before answering.";
     }
     if (mention.kind === "folder" && mention.path) {
-      return `- ${mention.raw}: call listFolder for "${mention.path}" and use searchNotes within the active scope when needed.`;
+      return `- ${mention.raw}: call listFolder for "${mention.path}" and call searchNotes with folder="${mention.path}" when searching this folder.`;
     }
     if (mention.kind === "note" && mention.path) {
       return `- ${mention.raw}: call openNote for "${mention.path}" before answering.`;

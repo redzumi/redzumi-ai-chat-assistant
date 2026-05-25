@@ -243,18 +243,19 @@ export class ObsidianAgentTools {
   private searchNotes(args: Record<string, unknown>, searchScope: ChatSearchScope | undefined): AgentToolExecution {
     const query = getStringArg(args, "query");
     const topK = getNumberArg(args, "topK") ?? this.getTopK();
+    const folder = getStringArg(args, "folder");
     if (!query) {
       return { content: "Missing required argument: query." };
     }
 
-    const scopeFilter = createScopeFilter(searchScope);
+    const scopeFilter = folder ? createFolderFilter(folder) : createScopeFilter(searchScope);
     const sources = this.searchEngine.search(query, Math.max(1, Math.min(20, topK)), scopeFilter);
     if (sources.length === 0) {
-      const scopeDescription = describeSearchScope(searchScope);
+      const scopeDescription = folder ? `folder ${folder}` : describeSearchScope(searchScope);
       return { content: `No indexed chunks matched query${scopeDescription ? ` in ${scopeDescription}` : ""}: ${query}` };
     }
 
-    const scopeDescription = describeSearchScope(searchScope);
+    const scopeDescription = folder ? `folder ${folder}` : describeSearchScope(searchScope);
     return {
       sources,
       workingSetItems: unique(sources.map((result) => result.chunk.filePath)).map((path) => ({
@@ -625,6 +626,14 @@ function createScopeFilter(searchScope: ChatSearchScope | undefined): ((chunk: I
   }
 
   return undefined;
+}
+
+function createFolderFilter(path: string): (chunk: IndexedChunk) => boolean {
+  const folderPath = path.replace(/^\/+/, "").replace(/\/$/, "");
+  if (!folderPath) {
+    return () => true;
+  }
+  return (chunk) => chunk.filePath === folderPath || chunk.filePath.startsWith(`${folderPath}/`);
 }
 
 function describeSearchScope(searchScope: ChatSearchScope | undefined): string {

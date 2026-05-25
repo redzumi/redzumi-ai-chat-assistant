@@ -141,6 +141,7 @@ test("completeWithAgent in plan mode exposes only read tools and asks for a plan
   const systemPrompt = String(request.messages[0].content);
   equal(systemPrompt.includes("You are in Plan mode."), true);
   equal(systemPrompt.includes("must not propose edits or create pending edits"), true);
+  equal(systemPrompt.includes("propose reviewed file edits"), false);
 });
 
 test("completeWithAgent executes multiple tool calls from one assistant response", async () => {

@@ -15,6 +15,7 @@ AI assistant plugin for working with your Obsidian vault.
 - Read-only agent tools for searching, opening notes, inspecting links, and reviewing the current note, with clickable source references.
 - Text commands for summarizing selections, extracting action items, and proposing polished rewrites.
 - Saved prompts with Ask/Edit intent, runnable from the command palette against the current selection or note.
+- Manual workflows for weekly reviews, meeting tasks, and project status notes, all behind pending edit review.
 - Reviewed edit proposals with patch previews, Apply/Reject, and batch patch support.
 - Optional stripping of `<think>`, `<reasoning>`, and `<thought>` blocks from assistant output.
 - Realtime re-indexing on vault create, modify, delete, and rename events.

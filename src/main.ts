@@ -2,7 +2,7 @@ import { App, Editor, MarkdownFileInfo, MarkdownView, Notice, Plugin, SuggestMod
 import { ObsidianAgentTools } from "./agent/obsidianTools";
 import { SemanticChunker } from "./core/chunker";
 import { IndexStore } from "./core/indexStore";
-import { ChatIntent, DEFAULT_SETTINGS, ObsidianAIAssistantSettings, IndexCoverage, PersistedIndex, SavedPrompt } from "./core/types";
+import { ChatIntent, ChatSearchScopeMode, DEFAULT_SETTINGS, ObsidianAIAssistantSettings, IndexCoverage, PersistedIndex, SavedPrompt } from "./core/types";
 import { indexVaultFiles } from "./indexing/indexAll";
 import { RealtimeIndexer } from "./indexing/realtimeIndexer";
 import { GraphSearchEngine } from "./search/graphSearch";
@@ -172,6 +172,30 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: "workflow-weekly-review-vault-chat-agent",
+      name: "Workflow: draft weekly review with Vault Chat Agent",
+      callback: () => {
+        void this.runWorkflow("weekly-review");
+      },
+    });
+
+    this.addCommand({
+      id: "workflow-meeting-tasks-vault-chat-agent",
+      name: "Workflow: meeting notes to tasks with Vault Chat Agent",
+      callback: () => {
+        void this.runWorkflow("meeting-tasks");
+      },
+    });
+
+    this.addCommand({
+      id: "workflow-project-status-vault-chat-agent",
+      name: "Workflow: draft project status with Vault Chat Agent",
+      callback: () => {
+        void this.runWorkflow("project-status");
+      },
+    });
+
     this.addSettingTab(new ObsidianAIAssistantSettingTab(this.app, this));
     this.configureRealtimeIndexer();
 
@@ -329,6 +353,17 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
     }).open();
   }
 
+  private async runWorkflow(workflow: "weekly-review" | "meeting-tasks" | "project-status"): Promise<void> {
+    const view = await this.activateView();
+    if (!view) {
+      return;
+    }
+
+    const file = this.app.workspace.getActiveFile();
+    const scope = getWorkflowScope(workflow, Boolean(file));
+    view.startTask(this.buildWorkflowPrompt(workflow, file?.path), "edit", scope);
+  }
+
   private getCurrentNoteTaskIntent(task: "summarize" | "review" | "tasks" | "improve"): ChatIntent {
     return task === "improve" ? "edit" : "ask";
   }
@@ -380,6 +415,39 @@ export default class ObsidianAIAssistantPlugin extends Plugin {
 
     return [`Run saved prompt: ${savedPrompt.title}`, savedPrompt.prompt, context + editInstruction].join("\n\n");
   }
+
+  private buildWorkflowPrompt(workflow: "weekly-review" | "meeting-tasks" | "project-status", activePath: string | undefined): string {
+    const date = formatDateForPath(new Date());
+    const activeNote = activePath ? `"${activePath}"` : "the active note if one is available";
+    const activeFolder = activePath ? `"${folderPath(activePath) || "/"}"` : "the vault";
+
+    switch (workflow) {
+      case "weekly-review":
+        return [
+          `Workflow: weekly review for ${activeFolder}.`,
+          "Use searchNotes and openNote to gather relevant notes from the current scope.",
+          "Look for accomplishments, decisions, open loops, blockers, stale TODOs, and next actions.",
+          `Prepare a pending new note at "Reviews/Weekly Review ${date}.md" with sections: Wins, Decisions, Open loops, Blockers, Next actions, Source notes.`,
+          "Do not apply the edit. The note must stay pending for review.",
+        ].join("\n\n");
+      case "meeting-tasks":
+        return [
+          `Workflow: meeting notes to tasks from ${activeNote}.`,
+          activePath ? `Use openNote on ${activeNote} first.` : "Use getCurrentNote and openCurrentNote first.",
+          "Extract decisions, action items, owners, due dates, follow-ups, and unresolved questions. Preserve uncertainty instead of inventing missing owners or dates.",
+          `Prepare a pending new note at "Tasks/Meeting Tasks ${date}.md" with sections: Decisions, Action items, Follow-ups, Questions, Source.`,
+          "Do not apply the edit. The note must stay pending for review.",
+        ].join("\n\n");
+      case "project-status":
+        return [
+          `Workflow: project status summary for ${activeFolder}.`,
+          "Use listFolder, searchNotes, and openNote to inspect project-relevant notes in the current scope.",
+          "Summarize progress, recent decisions, risks, blockers, timeline signals, and recommended next steps. Cite source note paths.",
+          `Prepare a pending new note at "Status/Project Status ${date}.md" with sections: Summary, Progress, Decisions, Risks, Blockers, Next steps, Source notes.`,
+          "Do not apply the edit. The note must stay pending for review.",
+        ].join("\n\n");
+    }
+  }
 }
 
 class SavedPromptPickerModal extends SuggestModal<SavedPrompt> {
@@ -412,6 +480,26 @@ class SavedPromptPickerModal extends SuggestModal<SavedPrompt> {
 
 function getEditorPath(ctx: MarkdownView | MarkdownFileInfo): string | undefined {
   return ctx.file?.path;
+}
+
+function getWorkflowScope(workflow: "weekly-review" | "meeting-tasks" | "project-status", hasActiveFile: boolean): ChatSearchScopeMode {
+  if (!hasActiveFile) {
+    return "vault";
+  }
+  return workflow === "meeting-tasks" ? "current-note" : "current-folder";
+}
+
+function folderPath(path: string): string {
+  const parts = path.split("/");
+  parts.pop();
+  return parts.join("/");
+}
+
+function formatDateForPath(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function migrateSettings(settings: PluginData["settings"]): ObsidianAIAssistantSettings {

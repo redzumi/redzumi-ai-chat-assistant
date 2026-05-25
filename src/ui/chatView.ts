@@ -59,13 +59,16 @@ export class ChatView extends ItemView {
     this.render();
   }
 
-  startTask(content: string, intent: ChatIntent): void {
+  startTask(content: string, intent: ChatIntent, searchScopeMode?: ChatSearchScopeMode): void {
     if (this.isSending) {
       new Notice("Vault Chat Agent is already working.", 3000);
       return;
     }
 
     this.intent = intent;
+    if (searchScopeMode) {
+      this.searchScopeMode = searchScopeMode;
+    }
     void this.sendMessage(content);
   }
 
